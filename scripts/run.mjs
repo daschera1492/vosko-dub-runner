@@ -14,6 +14,7 @@
  *   VDB_KEY           bridge runner key
  *   GH_TOKEN + GITHUB_REPOSITORY   enable release publishing
  *   PUBLISH_RELEASE   "false" disables publishing
+ *   OUTPUT_MODE       "audio" (default) = one merged MP3; "video" = mux onto original video
  *   MAX_ACCOUNT_TRIES per-chunk account attempts (default 2)
  */
 
@@ -35,6 +36,7 @@ const WORK_DIR = path.resolve(env.WORK_DIR || 'work');
 const OUT_DIR = path.join(WORK_DIR, 'out');
 const STATE_FILE = path.join(WORK_DIR, 'state.json');
 const MAX_ACCOUNT_TRIES = Math.max(1, Number(env.MAX_ACCOUNT_TRIES || 2));
+const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
 const STARTED = new Date();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -241,7 +243,7 @@ async function main() {
     sourceLang: source,
     targetLang: target,
     chunkTotal: chunks.length,
-    meta: { duration, isVideo, chunkSeconds: CHUNK_SECONDS, whisperModel: WHISPER_MODEL },
+    meta: { duration, isVideo, outputMode: OUTPUT_MODE, chunkSeconds: CHUNK_SECONDS, whisperModel: WHISPER_MODEL },
   });
   globalThis.RUN_ID = run.id;
   await bridge.updateRun(run.id, { status: 'running' });
@@ -269,11 +271,11 @@ async function main() {
   log(`[merge] concatenating ${ordered.length} dubbed chunk(s)`);
   await concatDubbed(ordered.map((r) => r.audioPath), dubMp3);
 
-  const ext = isVideo ? 'mp4' : 'mp3';
+  const ext = OUTPUT_MODE === 'video' && isVideo ? 'mp4' : 'mp3';
   const stamp = STARTED.toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
   const finalFile = path.join(OUT_DIR, `dubbed-${target.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${stamp}.${ext}`);
-  log(`[merge] remuxing final ${ext}`);
-  await assembleFinal({ input: inputFile, dubbedAudio: dubMp3, outFile: finalFile, isVideo });
+  log(`[merge] writing final ${ext}`);
+  await assembleFinal({ input: inputFile, dubbedAudio: dubMp3, outFile: finalFile, isVideo: ext === 'mp4' });
 
   const chunkRows = ordered
     .map((r) => `| ${r.index + 1} | ${r.start.toFixed(1)}s | ${r.duration.toFixed(1)}s | ${(r.creditsUsed || 0)} | \`${r.email}\` |`)
@@ -305,6 +307,7 @@ async function main() {
     source,
     target,
     isVideo,
+    outputMode: OUTPUT_MODE,
     chunks: ordered,
     outputFile: finalFile,
     releaseUrl,

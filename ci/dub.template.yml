@@ -41,6 +41,14 @@ __TARGET_OPTIONS__
           - tiny
           - base
           - small
+      output_mode:
+        description: 'audio = one merged MP3 (default); video = MP3 muxed onto the original video'
+        required: true
+        default: audio
+        type: choice
+        options:
+          - audio
+          - video
       publish_release:
         description: 'Publish the result as a GitHub Release asset'
         required: true
@@ -98,6 +106,7 @@ jobs:
           TARGET_LANG: ${{ inputs.target_lang }}
           CHUNK_SECONDS: ${{ inputs.chunk_seconds }}
           WHISPER_MODEL: ${{ inputs.whisper_model }}
+          OUTPUT_MODE: ${{ inputs.output_mode }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
           VDB_BASE_URL: ${{ secrets.VDB_BASE_URL }}
           VDB_KEY: ${{ secrets.VDB_KEY }}
