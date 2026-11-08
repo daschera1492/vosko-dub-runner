@@ -238,6 +238,15 @@ on:
         options:
           - audio
           - video
+      parallel_chunks:
+        description: 'How many chunks to dub at once (1 = safest, 2-3 = faster)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
       queue_group:
         description: 'Optional: runs sharing this value wait for each other; leave empty to run in parallel'
         required: false
@@ -304,6 +313,7 @@ jobs:
           CHUNK_SECONDS: ${{ inputs.chunk_seconds }}
           WHISPER_MODEL: ${{ inputs.whisper_model }}
           OUTPUT_MODE: ${{ inputs.output_mode }}
+          PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
           VDB_BASE_URL: ${{ secrets.VDB_BASE_URL }}
           VDB_KEY: ${{ secrets.VDB_KEY }}

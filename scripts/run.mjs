@@ -15,6 +15,7 @@
  *   GH_TOKEN + GITHUB_REPOSITORY   enable release publishing
  *   PUBLISH_RELEASE   "false" disables publishing
  *   OUTPUT_MODE       "audio" (default) = one merged MP3; "video" = mux onto original video
+ *   PARALLEL_CHUNKS   how many chunks to dub at once (default 2, max 3)
  *   MAX_ACCOUNT_TRIES per-chunk account attempts (default 2)
  */
 
@@ -37,6 +38,7 @@ const OUT_DIR = path.join(WORK_DIR, 'out');
 const STATE_FILE = path.join(WORK_DIR, 'state.json');
 const MAX_ACCOUNT_TRIES = Math.max(1, Number(env.MAX_ACCOUNT_TRIES || 2));
 const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
+const PARALLEL_CHUNKS = Math.max(1, Math.min(3, Number(env.PARALLEL_CHUNKS || 2)));
 const STARTED = new Date();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -252,17 +254,27 @@ async function main() {
   const state = loadState();
   const records = [];
   const failedChunks = [];
-  for (const chunk of chunks) {
-    try {
-      const record = await dubChunk(chunk, { target, source, isVideo, state });
-      records.push(record);
-      await bridge.updateRun(run.id, { chunk_done: records.length });
-    } catch (err) {
-      failedChunks.push(chunk);
-      log(`[chunk ${chunk.index}] FAILED: ${err.message}`);
-      await bridge.updateRun(run.id, { status: 'partial', error: err.message.slice(0, 1500) }).catch(() => {});
+  const queue = [...chunks];
+  const workers = Math.min(PARALLEL_CHUNKS, chunks.length);
+  log(`[chunk] dubbing up to ${workers} chunk(s) at a time`);
+
+  const runWorker = async () => {
+    while (queue.length) {
+      const chunk = queue.shift();
+      try {
+        const record = await dubChunk(chunk, { target, source, isVideo, state });
+        records.push(record);
+        await bridge.updateRun(run.id, { chunk_done: records.length }).catch(() => {});
+        log(`[chunk ${chunk.index}] finished (${records.length}/${chunks.length})`);
+      } catch (err) {
+        failedChunks.push(chunk);
+        log(`[chunk ${chunk.index}] FAILED: ${err.message}`);
+        await bridge.updateRun(run.id, { status: 'partial', error: err.message.slice(0, 1500) }).catch(() => {});
+      }
     }
-  }
+  };
+
+  await Promise.all(Array.from({ length: workers }, () => runWorker()));
 
   if (!records.length) throw new Error('no chunk was dubbed successfully');
 
