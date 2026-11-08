@@ -24,7 +24,7 @@ import { spawnSync } from 'node:child_process';
 import { fetchLive, resolve } from './languages.mjs';
 import * as bridge from './lib/bridge.mjs';
 import * as vosko from './lib/vosko.mjs';
-import { buildChunks, concatDubbed, assembleFinal, probeDuration, sh } from './lib/media.mjs';
+import { buildChunks, concatDubbed, assembleFinal, probeDuration, sh, fitChunkAudio } from './lib/media.mjs';
 
 const env = process.env;
 const INPUT_URL = env.INPUT_URL || '';
@@ -267,9 +267,16 @@ async function main() {
   if (!records.length) throw new Error('no chunk was dubbed successfully');
 
   const ordered = records.sort((a, b) => a.index - b.index);
+  const fitted = [];
+  for (const r of ordered) {
+    const out = path.join(OUT_DIR, `chunk-${String(r.index).padStart(3, '0')}-fit.mp3`);
+    const audioPath = await fitChunkAudio(r.audioPath, out, r.duration, { index: r.index });
+    fitted.push({ ...r, audioPath });
+  }
+
   const dubMp3 = path.join(OUT_DIR, 'dubbed.mp3');
-  log(`[merge] concatenating ${ordered.length} dubbed chunk(s)`);
-  await concatDubbed(ordered.map((r) => r.audioPath), dubMp3);
+  log(`[merge] concatenating ${fitted.length} dubbed chunk(s)`);
+  await concatDubbed(fitted.map((r) => r.audioPath), dubMp3);
 
   const ext = OUTPUT_MODE === 'video' && isVideo ? 'mp4' : 'mp3';
   const stamp = STARTED.toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');

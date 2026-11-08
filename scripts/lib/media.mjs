@@ -195,8 +195,30 @@ async function silencedetectCuts(input, duration, maxSeconds, hardCap) {
   return cuts;
 }
 
-/** Re-encode and concatenate dubbed MP3 chunks with tiny fades. */
-export async function concatDubbed(mp3Paths, outMp3) {
+/**
+ * Pad a dubbed chunk to its original span so chunk boundaries stay aligned
+ * with the source timeline. Never cuts speech: if the dub is longer than the
+ * span it is returned unchanged (with a warning).
+ */
+export async function fitChunkAudio(input, outFile, seconds, { index = 0 } = {}) {
+  const have = await probeDuration(input);
+  if (have >= seconds - 0.05) {
+    if (have > seconds + 0.35) {
+      console.warn(`[fit] chunk ${index}: dub is ${(have - seconds).toFixed(2)}s longer than its span; keeping as-is`);
+    }
+    return input;
+  }
+  await sh('ffmpeg', [
+    '-y', '-v', 'error',
+    '-i', input,
+    '-af', `apad=whole_dur=${seconds.toFixed(3)},atrim=0:${seconds.toFixed(3)}`,
+    '-c:a', 'libmp3lame', '-q:a', '2',
+    outFile,
+  ]);
+  return outFile;
+}
+
+/** Re-encode and concatenate dubbed MP3 chunks with tiny fades. */export async function concatDubbed(mp3Paths, outMp3) {
   fs.mkdirSync(path.dirname(outMp3), { recursive: true });
   const listFile = outMp3.replace(/\.mp3$/i, '') + '.txt';
   fs.writeFileSync(listFile, mp3Paths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n') + '\n');
