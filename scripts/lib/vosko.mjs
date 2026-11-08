@@ -12,6 +12,50 @@ const USER = '/user_center/api/v1';
 const BILLING = '/billing_center/api/v1';
 const VIDEO = '/video_translation/api/v1';
 
+/**
+ * Target languages handled by the "ultra" voice-clone pipeline. Anything else
+ * must use "standard" — this is exactly how the live site picks the pipeline
+ * (see the core-language list in its Nuxt bundle). Persian, for example, is a
+ * Global language: sending it to ultra is what produced meaningless Persian.
+ */
+export const ULTRA_LANGUAGES = new Set([
+  'Mandarin Chinese',
+  'English',
+  'Japanese',
+  'Korean',
+  'Spanish',
+  'German',
+  'French',
+  'Portuguese',
+  'Thai',
+  'Indonesian',
+  'Vietnamese',
+  'Malay',
+  'Filipino',
+  'Italian',
+  'Russian',
+  'Dutch',
+  'Polish',
+  'Turkish',
+  'Swedish',
+]);
+
+/** "auto" mirrors the site; VOSKO_PIPELINE can force a value for diagnostics. */
+export function pipelineTypeFor(target) {
+  const override = (process.env.VOSKO_PIPELINE || 'auto').toLowerCase();
+  if (override === 'ultra' || override === 'standard') return override;
+  const targets = String(target || '')
+    .split(',')
+    .map((row) => row.trim())
+    .filter(Boolean);
+  return targets.length && targets.every((row) => ULTRA_LANGUAGES.has(row)) ? 'ultra' : 'standard';
+}
+
+/** The site switches a project to "long" above 6 minutes (single file only). */
+export function videoTypeFor(duration) {
+  return Number(duration) > 360 ? 'long' : 'short';
+}
+
 const MIME = {
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',
@@ -79,7 +123,7 @@ export async function claimGift(token) {
   }
 }
 
-export function createProject(token, { name, source, target }) {
+export function createProject(token, { name, source, target, duration }) {
   return call(`${VIDEO}/projects`, {
     method: 'POST',
     token,
@@ -92,8 +136,8 @@ export function createProject(token, { name, source, target }) {
       video_dubbing: true,
       auto_translate: false,
       tts_provider: 'mock',
-      video_type: 'short',
-      pipeline_type: 'ultra',
+      video_type: videoTypeFor(duration),
+      pipeline_type: pipelineTypeFor(target),
     },
   });
 }
@@ -262,9 +306,11 @@ export async function download(url, destPath) {
  * The caller supplies the email from the bridge and the OTP.
  */
 export async function dubOnAccount({ token, filePath, duration, projectName, source, target, workDir }) {
-  const project = await createProject(token, { name: projectName, source, target });
+  const pipeline = pipelineTypeFor(target);
+  const videoType = videoTypeFor(duration);
+  const project = await createProject(token, { name: projectName, source, target, duration });
   const projectId = project.project_id;
-  console.log(`[vosko] project ${projectId} created (${source} -> ${target})`);
+  console.log(`[vosko] project ${projectId} created (${source} -> ${target}, ${pipeline}, ${videoType})`);
 
   await uploadMedia(token, projectId, filePath, { duration });
   await updateProject(token, projectId, {
@@ -275,8 +321,8 @@ export async function dubOnAccount({ token, filePath, duration, projectName, sou
     video_dubbing: true,
     auto_translate: false,
     tts_provider: 'mock',
-    video_type: 'short',
-    pipeline_type: 'ultra',
+    video_type: videoType,
+    pipeline_type: pipeline,
   });
   await startTranslation(token, projectId);
 
