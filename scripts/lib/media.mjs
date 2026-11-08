@@ -47,19 +47,125 @@ export async function extractForWhisper(input, outWav) {
   return outWav;
 }
 
-/** Cut one span into a compact mono WAV the site accepts. */
-export async function cutChunk(input, start, end, outWav) {
-  fs.mkdirSync(path.dirname(outWav), { recursive: true });
+/** First audio codec of a file (empty when it has no audio stream). */
+async function audioCodec(file) {
+  const { stdout } = await sh('ffprobe', [
+    '-v', 'error',
+    '-select_streams', 'a:0',
+    '-show_entries', 'stream=codec_name',
+    '-of', 'json',
+    file,
+  ]);
+  return JSON.parse(stdout || '{}').streams?.[0]?.codec_name || '';
+}
+
+/** Containers that can hold a stream-copied audio bitstream. */
+const COPY_EXT = {
+  aac: '.m4a',
+  mp3: '.mp3',
+  flac: '.flac',
+  alac: '.m4a',
+  pcm_s16le: '.wav',
+  pcm_s24le: '.wav',
+  pcm_s32le: '.wav',
+  pcm_f32le: '.wav',
+};
+
+/**
+ * Cut one span out of the original media.
+ *
+ * For video sources the *video file itself* is uploaded, exactly like a human
+ * uploading to the site: the site clones the voice from the audio track and
+ * uses the picture for speaker/emotion analysis. The audio bitstream is always
+ * stream-copied, never re-encoded or downmixed, so the voice reference stays
+ * bit-for-bit original. Only the video frames are re-encoded, because arbitrary
+ * speech boundaries are not keyframes; CRF 18 is visually lossless.
+ *
+ * Whisper works on a separate 16 kHz mono copy (`extractForWhisper`); that copy
+ * is only used to find cut points and is never uploaded.
+ *
+ * @param {string} input   Source media.
+ * @param {number} start   Start in seconds.
+ * @param {number} end     End in seconds.
+ * @param {string} outBase Output path without an extension.
+ * @param {{video?:boolean}} opts Upload a video chunk when the source has video.
+ * @returns {Promise<string>} The written file (extension chosen by codec).
+ */
+export async function cutChunk(input, start, end, outBase, { video = false } = {}) {
+  fs.mkdirSync(path.dirname(outBase), { recursive: true });
   const length = Math.max(0.2, end - start);
+
+  if (video) {
+    // Accurate cut + untouched audio. Video is re-encoded only at the cut
+    // points; `-ss` before `-i` makes the start frame-exact.
+    const out = outBase + '.mp4';
+    const common = [
+      '-y', '-v', 'error',
+      '-ss', start.toFixed(3),
+      '-i', input,
+      '-t', length.toFixed(3),
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
+    ];
+    const copied = await sh('ffmpeg', [...common, '-c:a', 'copy', '-movflags', '+faststart', out], { allowFail: true });
+    if (copied.code === 0) {
+      console.log(`[chunk] cut ${start.toFixed(2)}-${end.toFixed(2)}s (video + original audio copy)`);
+      return out;
+    }
+    console.warn('[chunk] audio copy into MP4 failed; encoding AAC 192k instead of degrading to mono');
+    await sh('ffmpeg', [
+      ...common,
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+      '-movflags', '+faststart', out,
+    ]);
+    return out;
+  }
+
+  const codec = await audioCodec(input);
+  const ext = COPY_EXT[codec];
+
+  if (ext) {
+    const out = outBase + ext;
+    const cut = await sh(
+      'ffmpeg',
+      [
+        '-y', '-v', 'error',
+        '-ss', start.toFixed(3),
+        '-i', input,
+        '-t', length.toFixed(3),
+        '-map', '0:a:0',
+        '-c:a', 'copy',
+        out,
+      ],
+      { allowFail: true }
+    );
+    if (cut.code === 0) {
+      const have = await probeDuration(out).catch(() => 0);
+      // Stream copy lands on packet boundaries; allow ~50 ms of slack.
+      if (have >= Math.min(length - 0.05, length * 0.95)) {
+        console.log(`[chunk] cut ${start.toFixed(2)}-${end.toFixed(2)}s (${codec} copy, no re-encode)`);
+        return out;
+      }
+      console.warn(`[chunk] ${codec} copy produced ${have.toFixed(2)}s of ${length.toFixed(2)}s; re-encoding`);
+    } else {
+      console.warn(`[chunk] ${codec} copy failed; re-encoding`);
+    }
+  }
+
+  // Rare codecs / broken timestamps: encode once at full quality, still stereo
+  // and 48 kHz, so the voice reference is not degraded like the old mono WAV.
+  const out = outBase + '.m4a';
   await sh('ffmpeg', [
     '-y', '-v', 'error',
     '-ss', start.toFixed(3),
     '-i', input,
     '-t', length.toFixed(3),
-    '-vn', '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le',
-    outWav,
+    '-vn',
+    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+    out,
   ]);
-  return outWav;
+  console.log(`[chunk] cut ${start.toFixed(2)}-${end.toFixed(2)}s (aac 192k fallback)`);
+  return out;
 }
 
 /**
@@ -120,9 +226,10 @@ const round = (n) => Math.round(n * 1000) / 1000;
 export async function buildChunks(input, outDir, {
   maxSeconds = 52,
   hardCap = 58,
-  padSeconds = 0.06,
+  padSeconds = 0,
   whisperModel = 'base',
   sourceLanguage = 'Auto',
+  video = false,
 } = {}) {
   fs.mkdirSync(outDir, { recursive: true });
   const duration = await probeDuration(input);
@@ -164,9 +271,8 @@ export async function buildChunks(input, outDir, {
     let start = Math.max(0, bounds[i] - (i === 0 ? 0 : padSeconds));
     let end = Math.min(duration, bounds[i + 1] + (i === bounds.length - 2 ? 0 : padSeconds));
     if (end - start > hardCap + 0.5) end = start + hardCap;
-    const file = path.join(outDir, `chunk-${String(i).padStart(3, '0')}.wav`);
-    await cutChunk(input, start, end, file);
-    chunks.push({ index: i, start: round(start), end: round(end), duration: round(end - start), path: file });
+    const file = await cutChunk(input, start, end, path.join(outDir, `chunk-${String(i).padStart(3, '0')}`), { video });
+    chunks.push({ index: i, start: round(start), end: round(end), duration: round(end - start), path: file, video });
     console.log(`[chunk] #${i} ${start.toFixed(2)}s - ${end.toFixed(2)}s (${(end - start).toFixed(2)}s)`);
   }
   return { duration, chunks };

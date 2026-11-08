@@ -237,6 +237,7 @@ async function main() {
     hardCap: 56,
     whisperModel: WHISPER_MODEL,
     sourceLanguage: source,
+    video: isVideo,
   });
   log(`[chunk] ${chunks.length} chunk(s)`);
 
