@@ -196,22 +196,42 @@ async function silencedetectCuts(input, duration, maxSeconds, hardCap) {
 }
 
 /**
- * Pad a dubbed chunk to its original span so chunk boundaries stay aligned
- * with the source timeline. Never cuts speech: if the dub is longer than the
- * span it is returned unchanged (with a warning).
+ * Fit a dubbed chunk back onto its original span.
+ *
+ * The site re-times each chunk: it trims leading/trailing silence, so the MP3
+ * is almost never exactly `seconds` long. If shorter we pad with silence; if
+ * longer we speed it up slightly (pitch-preserving atempo) and only cut the
+ * tail when the overflow is too large to stretch. This keeps every chunk
+ * boundary aligned with the source timeline, which is what video muxing needs.
  */
 export async function fitChunkAudio(input, outFile, seconds, { index = 0 } = {}) {
   const have = await probeDuration(input);
-  if (have >= seconds - 0.05) {
-    if (have > seconds + 0.35) {
-      console.warn(`[fit] chunk ${index}: dub is ${(have - seconds).toFixed(2)}s longer than its span; keeping as-is`);
+  const diff = have - seconds;
+  if (Math.abs(diff) <= 0.05) return input;
+
+  const filters = [];
+  if (diff > 0) {
+    const ratio = have / seconds;
+    const tempo = Math.min(1.3, ratio);
+    filters.push(`atempo=${tempo.toFixed(4)}`);
+    if (ratio > 1.3) {
+      console.warn(
+        `[fit] chunk ${index}: dub is ${(diff).toFixed(2)}s longer than its span; ` +
+          `speeding up ${(tempo * 100).toFixed(0)}% and trimming the tail`
+      );
+    } else {
+      console.log(`[fit] chunk ${index}: speeding up ${(tempo * 100 - 100).toFixed(1)}% to fit ${seconds.toFixed(2)}s`);
     }
-    return input;
+  } else {
+    console.log(`[fit] chunk ${index}: padding ${(-diff).toFixed(2)}s of silence`);
   }
+
+  filters.push(`apad=whole_dur=${seconds.toFixed(3)}`, `atrim=0:${seconds.toFixed(3)}`);
+
   await sh('ffmpeg', [
     '-y', '-v', 'error',
     '-i', input,
-    '-af', `apad=whole_dur=${seconds.toFixed(3)},atrim=0:${seconds.toFixed(3)}`,
+    '-af', filters.join(','),
     '-c:a', 'libmp3lame', '-q:a', '2',
     outFile,
   ]);
