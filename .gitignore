@@ -7,3 +7,5 @@ data/languages.live.json
 .DS_Store
 work-assembly/
 work-release/
+work-probe/
+work-assembly/
