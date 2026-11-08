@@ -40,6 +40,7 @@ const MAX_ACCOUNT_TRIES = Math.max(1, Number(env.MAX_ACCOUNT_TRIES || 2));
 const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
 const PARALLEL_CHUNKS = Math.max(1, Math.min(3, Number(env.PARALLEL_CHUNKS || 2)));
 const NO_CHUNK = ['1', 'true', 'yes'].includes(String(env.NO_CHUNK || env.WHOLE_VIDEO || '').toLowerCase());
+const MAX_CHUNKS = Math.max(0, Number(env.MAX_CHUNKS || 0)); // 0 = all (diagnostic: quick smoke test)
 const STARTED = new Date();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -233,7 +234,7 @@ async function main() {
   const isVideo = await isVideoFile(inputFile);
   log(`[input] ${path.basename(inputFile)} ${duration.toFixed(1)}s, ${isVideo ? 'video' : 'audio'}`);
 
-  const { chunks } = await buildChunks(inputFile, path.join(WORK_DIR, 'chunks'), {
+  let { chunks } = await buildChunks(inputFile, path.join(WORK_DIR, 'chunks'), {
     maxSeconds: CHUNK_SECONDS,
     hardCap: 56,
     whisperModel: WHISPER_MODEL,
@@ -241,6 +242,10 @@ async function main() {
     video: isVideo,
     single: NO_CHUNK,
   });
+  if (MAX_CHUNKS > 0 && chunks.length > MAX_CHUNKS) {
+    chunks = chunks.slice(0, MAX_CHUNKS);
+    log(`[chunk] MAX_CHUNKS=${MAX_CHUNKS}: only the first ${chunks.length} chunk(s) will be dubbed`);
+  }
   log(`[chunk] ${chunks.length} chunk(s)`);
 
   const run = await bridge.createRun({
