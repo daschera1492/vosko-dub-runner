@@ -1,0 +1,7 @@
+node_modules/
+work/
+work-smoke/
+smoke.log
+*.log
+data/languages.live.json
+.DS_Store

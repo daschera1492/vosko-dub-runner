@@ -1,0 +1,15 @@
+{
+  "name": "vosko-dub-runner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end vosko.ai dubbing runner with per-chunk accounts from the vosko-dub-bridge WordPress plugin.",
+  "scripts": {
+    "languages": "node scripts/languages.mjs",
+    "languages:render": "node scripts/languages.mjs --render-only",
+    "dub": "node scripts/run.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

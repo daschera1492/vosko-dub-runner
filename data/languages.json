@@ -1,0 +1,773 @@
+{
+  "fetched_at": "2026-11-08T13:47:42.284Z",
+  "source_page": "https://www.vosko.ai/translation/projects/create",
+  "scripts_scanned": 19,
+  "source": [
+    {
+      "display": "Auto Detect",
+      "value": "Auto"
+    },
+    {
+      "display": "Chinese (Mandarin)",
+      "value": "Mandarin Chinese"
+    },
+    {
+      "display": "English",
+      "value": "English"
+    },
+    {
+      "display": "Japanese",
+      "value": "Japanese"
+    },
+    {
+      "display": "Korean",
+      "value": "Korean"
+    },
+    {
+      "display": "Spanish",
+      "value": "Spanish"
+    },
+    {
+      "display": "German",
+      "value": "German"
+    },
+    {
+      "display": "French",
+      "value": "French"
+    },
+    {
+      "display": "Portuguese",
+      "value": "Portuguese"
+    },
+    {
+      "display": "Thai",
+      "value": "Thai"
+    },
+    {
+      "display": "Indonesian",
+      "value": "Indonesian"
+    },
+    {
+      "display": "Vietnamese",
+      "value": "Vietnamese"
+    },
+    {
+      "display": "Malay",
+      "value": "Malay"
+    },
+    {
+      "display": "Filipino",
+      "value": "Filipino"
+    },
+    {
+      "display": "Italian",
+      "value": "Italian"
+    },
+    {
+      "display": "Russian",
+      "value": "Russian"
+    },
+    {
+      "display": "Dutch",
+      "value": "Dutch"
+    },
+    {
+      "display": "Polish",
+      "value": "Polish"
+    },
+    {
+      "display": "Turkish",
+      "value": "Turkish"
+    },
+    {
+      "display": "Swedish",
+      "value": "Swedish"
+    },
+    {
+      "display": "Afrikaans",
+      "value": "Afrikaans"
+    },
+    {
+      "display": "Amharic",
+      "value": "Amharic"
+    },
+    {
+      "display": "Arabic",
+      "value": "Arabic"
+    },
+    {
+      "display": "Armenian",
+      "value": "Armenian"
+    },
+    {
+      "display": "Assamese",
+      "value": "Assamese"
+    },
+    {
+      "display": "Asturian",
+      "value": "Asturian"
+    },
+    {
+      "display": "Azerbaijani",
+      "value": "Azerbaijani"
+    },
+    {
+      "display": "Belarusian",
+      "value": "Belarusian"
+    },
+    {
+      "display": "Bengali",
+      "value": "Bengali"
+    },
+    {
+      "display": "Bosnian",
+      "value": "Bosnian"
+    },
+    {
+      "display": "Bulgarian",
+      "value": "Bulgarian"
+    },
+    {
+      "display": "Burmese",
+      "value": "Burmese"
+    },
+    {
+      "display": "Cape Verdean Creole",
+      "value": "Cape Verdean Creole"
+    },
+    {
+      "display": "Catalan",
+      "value": "Catalan"
+    },
+    {
+      "display": "Cebuano",
+      "value": "Cebuano"
+    },
+    {
+      "display": "Chichewa (Nyanja)",
+      "value": "Chichewa (Nyanja)"
+    },
+    {
+      "display": "Chinese (Cantonese)",
+      "value": "Cantonese"
+    },
+    {
+      "display": "Croatian",
+      "value": "Croatian"
+    },
+    {
+      "display": "Czech",
+      "value": "Czech"
+    },
+    {
+      "display": "Danish",
+      "value": "Danish"
+    },
+    {
+      "display": "Estonian",
+      "value": "Estonian"
+    },
+    {
+      "display": "Finnish",
+      "value": "Finnish"
+    },
+    {
+      "display": "Fulah",
+      "value": "Fulah"
+    },
+    {
+      "display": "Galician",
+      "value": "Galician"
+    },
+    {
+      "display": "Ganda",
+      "value": "Ganda"
+    },
+    {
+      "display": "Georgian",
+      "value": "Georgian"
+    },
+    {
+      "display": "Greek",
+      "value": "Greek"
+    },
+    {
+      "display": "Gujarati",
+      "value": "Gujarati"
+    },
+    {
+      "display": "Hausa",
+      "value": "Hausa"
+    },
+    {
+      "display": "Hebrew",
+      "value": "Hebrew"
+    },
+    {
+      "display": "Hindi",
+      "value": "Hindi"
+    },
+    {
+      "display": "Hungarian",
+      "value": "Hungarian"
+    },
+    {
+      "display": "Icelandic",
+      "value": "Icelandic"
+    },
+    {
+      "display": "Igbo",
+      "value": "Igbo"
+    },
+    {
+      "display": "Irish",
+      "value": "Irish"
+    },
+    {
+      "display": "Javanese",
+      "value": "Javanese"
+    },
+    {
+      "display": "Kannada",
+      "value": "Kannada"
+    },
+    {
+      "display": "Kazakh",
+      "value": "Kazakh"
+    },
+    {
+      "display": "Khmer",
+      "value": "Khmer"
+    },
+    {
+      "display": "Kurdish",
+      "value": "Kurdish"
+    },
+    {
+      "display": "Kyrgyz",
+      "value": "Kyrgyz"
+    },
+    {
+      "display": "Lao",
+      "value": "Lao"
+    },
+    {
+      "display": "Latvian",
+      "value": "Latvian"
+    },
+    {
+      "display": "Lingala",
+      "value": "Lingala"
+    },
+    {
+      "display": "Lithuanian",
+      "value": "Lithuanian"
+    },
+    {
+      "display": "Luo",
+      "value": "Luo"
+    },
+    {
+      "display": "Luxembourgish",
+      "value": "Luxembourgish"
+    },
+    {
+      "display": "Macedonian",
+      "value": "Macedonian"
+    },
+    {
+      "display": "Malayalam",
+      "value": "Malayalam"
+    },
+    {
+      "display": "Maltese",
+      "value": "Maltese"
+    },
+    {
+      "display": "Maori",
+      "value": "Maori"
+    },
+    {
+      "display": "Marathi",
+      "value": "Marathi"
+    },
+    {
+      "display": "Mongolian",
+      "value": "Mongolian"
+    },
+    {
+      "display": "Nepali",
+      "value": "Nepali"
+    },
+    {
+      "display": "Northern Sotho",
+      "value": "Northern Sotho"
+    },
+    {
+      "display": "Norwegian",
+      "value": "Norwegian"
+    },
+    {
+      "display": "Occitan",
+      "value": "Occitan"
+    },
+    {
+      "display": "Odia (Oriya)",
+      "value": "Odia (Oriya)"
+    },
+    {
+      "display": "Pashto",
+      "value": "Pashto"
+    },
+    {
+      "display": "Persian (Farsi)",
+      "value": "Persian (Farsi)"
+    },
+    {
+      "display": "Punjabi",
+      "value": "Punjabi"
+    },
+    {
+      "display": "Romanian",
+      "value": "Romanian"
+    },
+    {
+      "display": "Serbian",
+      "value": "Serbian"
+    },
+    {
+      "display": "Shona",
+      "value": "Shona"
+    },
+    {
+      "display": "Sindhi",
+      "value": "Sindhi"
+    },
+    {
+      "display": "Slovak",
+      "value": "Slovak"
+    },
+    {
+      "display": "Slovenian",
+      "value": "Slovenian"
+    },
+    {
+      "display": "Somali",
+      "value": "Somali"
+    },
+    {
+      "display": "Swahili",
+      "value": "Swahili"
+    },
+    {
+      "display": "Tajik",
+      "value": "Tajik"
+    },
+    {
+      "display": "Tamil",
+      "value": "Tamil"
+    },
+    {
+      "display": "Telugu",
+      "value": "Telugu"
+    },
+    {
+      "display": "Ukrainian",
+      "value": "Ukrainian"
+    },
+    {
+      "display": "Umbundu",
+      "value": "Umbundu"
+    },
+    {
+      "display": "Urdu",
+      "value": "Urdu"
+    },
+    {
+      "display": "Uzbek",
+      "value": "Uzbek"
+    },
+    {
+      "display": "Welsh",
+      "value": "Welsh"
+    },
+    {
+      "display": "Wolof",
+      "value": "Wolof"
+    },
+    {
+      "display": "Xhosa",
+      "value": "Xhosa"
+    },
+    {
+      "display": "Zulu",
+      "value": "Zulu"
+    }
+  ],
+  "target": [
+    {
+      "display": "Chinese (Mandarin)",
+      "value": "Mandarin Chinese"
+    },
+    {
+      "display": "English",
+      "value": "English"
+    },
+    {
+      "display": "Japanese",
+      "value": "Japanese"
+    },
+    {
+      "display": "Korean",
+      "value": "Korean"
+    },
+    {
+      "display": "Spanish",
+      "value": "Spanish"
+    },
+    {
+      "display": "German",
+      "value": "German"
+    },
+    {
+      "display": "French",
+      "value": "French"
+    },
+    {
+      "display": "Portuguese",
+      "value": "Portuguese"
+    },
+    {
+      "display": "Thai",
+      "value": "Thai"
+    },
+    {
+      "display": "Indonesian",
+      "value": "Indonesian"
+    },
+    {
+      "display": "Vietnamese",
+      "value": "Vietnamese"
+    },
+    {
+      "display": "Malay",
+      "value": "Malay"
+    },
+    {
+      "display": "Filipino",
+      "value": "Filipino"
+    },
+    {
+      "display": "Italian",
+      "value": "Italian"
+    },
+    {
+      "display": "Russian",
+      "value": "Russian"
+    },
+    {
+      "display": "Dutch",
+      "value": "Dutch"
+    },
+    {
+      "display": "Polish",
+      "value": "Polish"
+    },
+    {
+      "display": "Turkish",
+      "value": "Turkish"
+    },
+    {
+      "display": "Swedish",
+      "value": "Swedish"
+    },
+    {
+      "display": "Afrikaans",
+      "value": "Afrikaans"
+    },
+    {
+      "display": "Amharic",
+      "value": "Amharic"
+    },
+    {
+      "display": "Arabic",
+      "value": "Arabic"
+    },
+    {
+      "display": "Armenian",
+      "value": "Armenian"
+    },
+    {
+      "display": "Assamese",
+      "value": "Assamese"
+    },
+    {
+      "display": "Asturian",
+      "value": "Asturian"
+    },
+    {
+      "display": "Azerbaijani",
+      "value": "Azerbaijani"
+    },
+    {
+      "display": "Belarusian",
+      "value": "Belarusian"
+    },
+    {
+      "display": "Bengali",
+      "value": "Bengali"
+    },
+    {
+      "display": "Bosnian",
+      "value": "Bosnian"
+    },
+    {
+      "display": "Bulgarian",
+      "value": "Bulgarian"
+    },
+    {
+      "display": "Burmese",
+      "value": "Burmese"
+    },
+    {
+      "display": "Catalan",
+      "value": "Catalan"
+    },
+    {
+      "display": "Cebuano",
+      "value": "Cebuano"
+    },
+    {
+      "display": "Chichewa (Nyanja)",
+      "value": "Chichewa (Nyanja)"
+    },
+    {
+      "display": "Chinese (Cantonese)",
+      "value": "Cantonese"
+    },
+    {
+      "display": "Croatian",
+      "value": "Croatian"
+    },
+    {
+      "display": "Czech",
+      "value": "Czech"
+    },
+    {
+      "display": "Danish",
+      "value": "Danish"
+    },
+    {
+      "display": "Estonian",
+      "value": "Estonian"
+    },
+    {
+      "display": "Finnish",
+      "value": "Finnish"
+    },
+    {
+      "display": "Galician",
+      "value": "Galician"
+    },
+    {
+      "display": "Georgian",
+      "value": "Georgian"
+    },
+    {
+      "display": "Greek",
+      "value": "Greek"
+    },
+    {
+      "display": "Gujarati",
+      "value": "Gujarati"
+    },
+    {
+      "display": "Hausa",
+      "value": "Hausa"
+    },
+    {
+      "display": "Hebrew",
+      "value": "Hebrew"
+    },
+    {
+      "display": "Hindi",
+      "value": "Hindi"
+    },
+    {
+      "display": "Hungarian",
+      "value": "Hungarian"
+    },
+    {
+      "display": "Icelandic",
+      "value": "Icelandic"
+    },
+    {
+      "display": "Irish",
+      "value": "Irish"
+    },
+    {
+      "display": "Javanese",
+      "value": "Javanese"
+    },
+    {
+      "display": "Kamba",
+      "value": "Kamba"
+    },
+    {
+      "display": "Kannada",
+      "value": "Kannada"
+    },
+    {
+      "display": "Kazakh",
+      "value": "Kazakh"
+    },
+    {
+      "display": "Kyrgyz",
+      "value": "Kyrgyz"
+    },
+    {
+      "display": "Lao",
+      "value": "Lao"
+    },
+    {
+      "display": "Latvian",
+      "value": "Latvian"
+    },
+    {
+      "display": "Lingala",
+      "value": "Lingala"
+    },
+    {
+      "display": "Lithuanian",
+      "value": "Lithuanian"
+    },
+    {
+      "display": "Luxembourgish",
+      "value": "Luxembourgish"
+    },
+    {
+      "display": "Macedonian",
+      "value": "Macedonian"
+    },
+    {
+      "display": "Malayalam",
+      "value": "Malayalam"
+    },
+    {
+      "display": "Maltese",
+      "value": "Maltese"
+    },
+    {
+      "display": "Marathi",
+      "value": "Marathi"
+    },
+    {
+      "display": "Mongolian",
+      "value": "Mongolian"
+    },
+    {
+      "display": "Nepali",
+      "value": "Nepali"
+    },
+    {
+      "display": "Norwegian",
+      "value": "Norwegian"
+    },
+    {
+      "display": "Occitan",
+      "value": "Occitan"
+    },
+    {
+      "display": "Odia (Oriya)",
+      "value": "Odia (Oriya)"
+    },
+    {
+      "display": "Pashto",
+      "value": "Pashto"
+    },
+    {
+      "display": "Persian (Farsi)",
+      "value": "Persian (Farsi)"
+    },
+    {
+      "display": "Punjabi",
+      "value": "Punjabi"
+    },
+    {
+      "display": "Romanian",
+      "value": "Romanian"
+    },
+    {
+      "display": "Serbian",
+      "value": "Serbian"
+    },
+    {
+      "display": "Shona",
+      "value": "Shona"
+    },
+    {
+      "display": "Sindhi",
+      "value": "Sindhi"
+    },
+    {
+      "display": "Slovak",
+      "value": "Slovak"
+    },
+    {
+      "display": "Slovenian",
+      "value": "Slovenian"
+    },
+    {
+      "display": "Somali",
+      "value": "Somali"
+    },
+    {
+      "display": "Sorani Kurdish",
+      "value": "Sorani Kurdish"
+    },
+    {
+      "display": "Swahili",
+      "value": "Swahili"
+    },
+    {
+      "display": "Tajik",
+      "value": "Tajik"
+    },
+    {
+      "display": "Tamil",
+      "value": "Tamil"
+    },
+    {
+      "display": "Telugu",
+      "value": "Telugu"
+    },
+    {
+      "display": "Ukrainian",
+      "value": "Ukrainian"
+    },
+    {
+      "display": "Urdu",
+      "value": "Urdu"
+    },
+    {
+      "display": "Uzbek",
+      "value": "Uzbek"
+    },
+    {
+      "display": "Welsh",
+      "value": "Welsh"
+    },
+    {
+      "display": "Wolof",
+      "value": "Wolof"
+    },
+    {
+      "display": "Yoruba",
+      "value": "Yoruba"
+    },
+    {
+      "display": "Zulu",
+      "value": "Zulu"
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+name: Vosko dub
+
+# The two option lists below are generated from the live vosko.ai bundle by
+# scripts/languages.mjs (run the "Sync languages" workflow to refresh them).
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'Direct video or audio URL'
+        required: true
+        type: string
+      source_lang:
+        description: 'Source language (live list from vosko.ai)'
+        required: true
+        default: 'Auto Detect'
+        type: choice
+        options:
+__SOURCE_OPTIONS__
+      target_lang:
+        description: 'Target language (live list from vosko.ai)'
+        required: true
+        default: 'Persian (Farsi)'
+        type: choice
+        options:
+__TARGET_OPTIONS__
+      chunk_seconds:
+        description: 'Soft chunk length (site cap is 60s per dub)'
+        required: true
+        default: '52'
+        type: choice
+        options:
+          - '30'
+          - '40'
+          - '52'
+      whisper_model:
+        description: 'Whisper model for silence-aware chunking'
+        required: true
+        default: base
+        type: choice
+        options:
+          - tiny
+          - base
+          - small
+      publish_release:
+        description: 'Publish the result as a GitHub Release asset'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vosko-dub
+  cancel-in-progress: false
+
+jobs:
+  dub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -n 1
+
+      - name: Cache Whisper model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/whisper
+          key: whisper-${{ inputs.whisper_model }}
+
+      - name: Install Whisper
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --quiet openai-whisper
+
+      - name: Fetch live languages and verify selection
+        env:
+          SOURCE_LANG: ${{ inputs.source_lang }}
+          TARGET_LANG: ${{ inputs.target_lang }}
+        run: node scripts/languages.mjs --verify "$SOURCE_LANG" "$TARGET_LANG" --summary
+
+      - name: Dub
+        id: dub
+        env:
+          INPUT_URL: ${{ inputs.video_url }}
+          SOURCE_LANG: ${{ inputs.source_lang }}
+          TARGET_LANG: ${{ inputs.target_lang }}
+          CHUNK_SECONDS: ${{ inputs.chunk_seconds }}
+          WHISPER_MODEL: ${{ inputs.whisper_model }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          VDB_BASE_URL: ${{ secrets.VDB_BASE_URL }}
+          VDB_KEY: ${{ secrets.VDB_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WORK_DIR: ${{ runner.temp }}/work
+        run: node scripts/run.mjs
+
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dub-output
+          path: ${{ runner.temp }}/work/out/*
+          if-no-files-found: warn
+
+      - name: Link
+        if: always()
+        run: |
+          {
+            echo '### Result'
+            echo ''
+            echo "- file: \`${{ steps.dub.outputs.name }}\`"
+            echo "- release: ${{ steps.dub.outputs.release_url }}"
+            echo "- bridge run: ${{ steps.dub.outputs.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,49 @@
+name: Sync languages
+
+# Reads the live language lists from the vosko.ai bundle and re-renders
+# .github/workflows/dub.yml so the dropdowns always match the site.
+#
+# Pushing a change to a workflow file needs a PAT with the `workflow` scope:
+# GITHUB_TOKEN is not allowed to modify .github/workflows/*.yml.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-languages
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Fetch languages
+        run: node scripts/languages.mjs --summary
+
+      - name: Commit when the lists changed
+        run: |
+          if git diff --quiet -- data/languages.json .github/workflows/dub.yml; then
+            echo "Language lists are already up to date."
+            exit 0
+          fi
+          git config user.name 'vosko-dub-bot'
+          git config user.email 'vosko-dub-bot@users.noreply.github.com'
+          git add data/languages.json .github/workflows/dub.yml
+          git commit -m "chore: sync language lists from vosko.ai"
+          git push
