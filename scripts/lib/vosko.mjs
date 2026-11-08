@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { requestJson, sleep, retry } from './http.mjs';
+import { mixSegmentAudio } from './media.mjs';
 
 const API = (process.env.VOSKO_API || 'https://api.vosko.ai').replace(/\/$/, '');
 const USER = '/user_center/api/v1';
@@ -146,6 +147,59 @@ export function getProject(token, projectId) {
   return call(`${VIDEO}/projects/${projectId}`, { token });
 }
 
+export function getItem(token, projectId, itemId) {
+  return call(`${VIDEO}/projects/${projectId}/items/${itemId}`, { token });
+}
+
+/**
+ * Standard-pipeline per-segment voice generation. The editor calls this for
+ * every subtitle whose text changed (or whose audio is missing).
+ */
+export function submitSegmentTts(token, projectId, itemId, { voiceId, text, voiceIdType, startTime }) {
+  return call(`${VIDEO}/projects/${projectId}/items/${itemId}/tts`, {
+    method: 'POST',
+    token,
+    body: {
+      voice_id: voiceId,
+      text,
+      voice_id_type: voiceIdType,
+      start_time: startTime,
+    },
+  });
+}
+
+export function segmentTtsResult(token, taskId) {
+  return call(`${VIDEO}/projects/items/tts/result`, { method: 'POST', token, body: { task_id: taskId } });
+}
+
+/** Poll one segment TTS task until it yields an audio URL. */
+export async function waitForSegmentTts(token, taskId, { timeoutMs = 6 * 60 * 1000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const data = await segmentTtsResult(token, taskId);
+    const status = Number(data?.status);
+    if (status === 3) {
+      const audio = data?.result?.audio_url || '';
+      if (!audio) throw new Error(`segment tts ${taskId} finished without audio_url`);
+      return { audio, result: data.result };
+    }
+    if (status === 4 || status === -1 || status === -2) {
+      throw new Error(`segment tts ${taskId} failed: ${data?.msg || status}`);
+    }
+    await sleep(2000);
+  }
+  throw new Error(`segment tts ${taskId} timed out`);
+}
+
+/** Start positions/audio of the translated subtitle segments (standard pipeline). */
+export function segmentStart(seg) {
+  return Number(seg?.translated_start_time_modified ?? seg?.translated_start_time ?? seg?.start_time) || 0;
+}
+
+export function segmentAudio(seg) {
+  return seg?._pending_translated_audio_url || seg?.translated_audio_url || '';
+}
+
 export function getOssCredential(token, projectId) {
   return call(`${VIDEO}/projects/${projectId}/oss-sts`, { token });
 }
@@ -271,9 +325,16 @@ export async function waitForResult(token, projectId, { timeoutMs = 30 * 60 * 10
     const ready = rows.find((r) => translatedAudioUrl(r));
     if (ready) return { project, item: ready };
 
+    // Standard pipeline: translation finishes as per-subtitle segments
+    // (editable_contents) and the audio is assembled from them afterwards.
+    const translated = rows.find(
+      (r) => Number(r.status) >= 4 && Array.isArray(r.editable_contents) && r.editable_contents.length,
+    );
+    if (translated) return { project, item: translated };
+
     if (onTick) onTick(snapshot);
 
-    if (project?.status === 3 && rows.length && rows.every((r) => r.status !== 3)) {
+    if (project?.status === 3 && rows.length && rows.every((r) => Number(r.status) < 4)) {
       throw new Error(`project finished without dubbed audio: ${JSON.stringify(snapshot)}`);
     }
 
@@ -327,12 +388,83 @@ export async function dubOnAccount({ token, filePath, duration, projectName, sou
   await startTranslation(token, projectId);
 
   const { item } = await waitForResult(token, projectId, { timeoutMs: 45 * 60 * 1000 });
-  const url = translatedAudioUrl(item);
   const outPath = path.join(workDir, `chunk-${String(item.item_id)}.mp3`);
-  const bytes = await download(url, outPath);
-  console.log(`[vosko] dubbed audio saved (${(bytes / 1024).toFixed(0)} KiB)`);
+
+  let url = translatedAudioUrl(item);
+  if (url) {
+    const bytes = await download(url, outPath);
+    console.log(`[vosko] dubbed audio saved (${(bytes / 1024).toFixed(0)} KiB)`);
+    return { projectId, itemId: item.item_id, audioPath: outPath, audioUrl: url };
+  }
+
+  // Standard pipeline: the translated item carries one audio clip per subtitle
+  // segment instead of a single merged track. Download them and lay them on a
+  // silent timeline, exactly like the editor's playback does.
+  console.log(`[vosko] standard pipeline: assembling per-segment audio for item ${item.item_id}`);
+  url = await assembleStandardAudio(token, projectId, item, duration, workDir);
+  const bytes = fs.statSync(outPath).size;
+  console.log(`[vosko] dubbed audio assembled (${(bytes / 1024).toFixed(0)} KiB)`);
 
   return { projectId, itemId: item.item_id, audioPath: outPath, audioUrl: url };
+}
+
+/**
+ * Build the full chunk track from the per-segment voice files of a standard
+ * project. Segments without audio get their TTS generated on the spot through
+ * the same endpoint the web editor uses.
+ */
+async function assembleStandardAudio(token, projectId, item, totalDuration, workDir) {
+  let detail = item;
+  if (!Array.isArray(detail?.editable_contents) || !detail.editable_contents.length) {
+    detail = await getItem(token, projectId, item.item_id);
+  }
+  if (process.env.DEBUG_DUMP) {
+    const dump = path.join(workDir, `item-${item.item_id}.json`);
+    fs.writeFileSync(dump, JSON.stringify(detail, null, 2));
+    console.log(`[vosko] debug dump -> ${dump}`);
+  }
+
+  const segments = Array.isArray(detail?.editable_contents) ? detail.editable_contents : [];
+  if (!segments.length) throw new Error(`item ${item.item_id} has no dubbed audio and no subtitle segments`);
+
+  const clips = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    let audio = segmentAudio(seg);
+    if (!audio) {
+      if (!seg.voice_id || !String(seg.translated_text || '').trim()) {
+        console.log(`[vosko] segment ${i + 1}/${segments.length} has no voice/text; skipping`);
+        continue;
+      }
+      const task = await submitSegmentTts(token, projectId, item.item_id, {
+        voiceId: seg.voice_id,
+        text: seg.translated_text,
+        voiceIdType: seg.voice_id_type,
+        startTime: seg.start_time,
+      });
+      const taskId = task?.task_id;
+      if (!taskId) throw new Error(`segment ${i + 1} tts returned no task_id: ${JSON.stringify(task).slice(0, 200)}`);
+      const done = await waitForSegmentTts(token, taskId);
+      audio = done.audio;
+      console.log(`[vosko] segment ${i + 1}/${segments.length} tts ok`);
+    }
+    clips.push({ index: i, audio, offset: segmentStart(seg) });
+  }
+
+  if (!clips.length) throw new Error(`item ${item.item_id}: every subtitle segment is missing voice audio`);
+
+  const local = [];
+  for (const clip of clips) {
+    const ext = path.extname(new URL(clip.audio).pathname) || '.mp3';
+    const file = path.join(workDir, `seg-${item.item_id}-${String(clip.index).padStart(3, '0')}${ext}`);
+    await download(clip.audio, file);
+    local.push({ path: file, offset: Math.max(0, Math.min(totalDuration, clip.offset)) });
+  }
+  console.log(`[vosko] mixing ${local.length} segment(s) onto ${Number(totalDuration).toFixed(2)}s`);
+
+  const outPath = path.join(workDir, `chunk-${String(item.item_id)}.mp3`);
+  await mixSegmentAudio(local, Number(totalDuration), outPath);
+  return outPath;
 }
 
 export { retry };

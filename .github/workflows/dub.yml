@@ -235,6 +235,16 @@ on:
         required: true
         default: false
         type: boolean
+      max_chunks:
+        description: 'Diagnostic: only dub the first N chunks (0 = all)'
+        required: false
+        default: '0'
+        type: string
+      debug_dump:
+        description: 'Diagnostic: save the raw item JSON next to the output'
+        required: false
+        default: false
+        type: boolean
       whisper_model:
         description: 'Whisper model for silence-aware chunking'
         required: true
@@ -327,6 +337,8 @@ jobs:
           CHUNK_SECONDS: ${{ inputs.chunk_seconds }}
           VOSKO_PIPELINE: ${{ inputs.pipeline_type }}
           NO_CHUNK: ${{ inputs.no_chunk }}
+          MAX_CHUNKS: ${{ inputs.max_chunks }}
+          DEBUG_DUMP: ${{ inputs.debug_dump }}
           WHISPER_MODEL: ${{ inputs.whisper_model }}
           OUTPUT_MODE: ${{ inputs.output_mode }}
           PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}

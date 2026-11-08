@@ -47,6 +47,39 @@ export async function extractForWhisper(input, outWav) {
   return outWav;
 }
 
+/**
+ * Lay per-subtitle voice clips on a silent timeline of `totalSeconds` and mix
+ * them into one track. This mirrors what the vosko editor does in the browser
+ * for the standard pipeline, where each subtitle owns its own TTS file.
+ *
+ * @param {Array<{path:string, offset:number}>} clips
+ * @param {number} totalSeconds
+ * @param {string} outPath
+ */
+export async function mixSegmentAudio(clips, totalSeconds, outPath) {
+  if (!clips.length) throw new Error('mixSegmentAudio: no clips');
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  const args = ['-y', '-v', 'error'];
+  for (const clip of clips) args.push('-i', clip.path);
+
+  const filters = clips.map((clip, i) => {
+    const delay = Math.max(0, Math.round(clip.offset * 1000));
+    return `[${i}:a]aresample=44100,adelay=${delay}:all=1[a${i}]`;
+  });
+  const inputs = clips.map((_, i) => `[a${i}]`).join('');
+  filters.push(`${inputs}amix=inputs=${clips.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95[mix]`);
+  filters.push(`[mix]apad=whole_dur=${totalSeconds.toFixed(3)},atrim=0:${totalSeconds.toFixed(3)}[out]`);
+
+  await sh('ffmpeg', [
+    ...args,
+    '-filter_complex', filters.join(';'),
+    '-map', '[out]',
+    '-c:a', 'libmp3lame', '-q:a', '2',
+    outPath,
+  ]);
+  return outPath;
+}
+
 /** First audio codec of a file (empty when it has no audio stream). */
 async function audioCodec(file) {
   const { stdout } = await sh('ffprobe', [
