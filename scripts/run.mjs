@@ -16,7 +16,9 @@
  *   PUBLISH_RELEASE   "false" disables publishing
  *   OUTPUT_MODE       "audio" (default) = one merged MP3; "video" = mux onto original video
  *   PARALLEL_CHUNKS   how many chunks to dub at once (default 2, max 3)
- *   MAX_ACCOUNT_TRIES per-chunk account attempts (default 2)
+ *   MAX_ACCOUNT_TRIES per-chunk account attempts (default 4)
+ *   OTP_WAIT_SECONDS  how long to wait for each login code (default 75)
+ *   ALLOW_PARTIAL     "true" pads failed chunks with silence instead of failing
  */
 
 import fs from 'node:fs';
@@ -36,7 +38,9 @@ const WHISPER_MODEL = env.WHISPER_MODEL || 'base';
 const WORK_DIR = path.resolve(env.WORK_DIR || 'work');
 const OUT_DIR = path.join(WORK_DIR, 'out');
 const STATE_FILE = path.join(WORK_DIR, 'state.json');
-const MAX_ACCOUNT_TRIES = Math.max(1, Number(env.MAX_ACCOUNT_TRIES || 2));
+const MAX_ACCOUNT_TRIES = Math.max(1, Math.min(6, Number(env.MAX_ACCOUNT_TRIES || 4)));
+const OTP_WAIT_SECONDS = Math.max(30, Math.min(120, Number(env.OTP_WAIT_SECONDS || 75)));
+const ALLOW_PARTIAL = ['1', 'true', 'yes'].includes(String(env.ALLOW_PARTIAL || '').toLowerCase());
 const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
 const PARALLEL_CHUNKS = Math.max(1, Math.min(3, Number(env.PARALLEL_CHUNKS || 2)));
 const NO_CHUNK = ['1', 'true', 'yes'].includes(String(env.NO_CHUNK || env.WHOLE_VIDEO || '').toLowerCase());
@@ -116,7 +120,7 @@ async function openAccount(chunkIndex) {
   log(`[account] chunk ${chunkIndex}: ${email}`);
 
   await vosko.sendLoginCode(email);
-  const otp = await bridge.waitForCode(email, { waitSeconds: 50 });
+  const otp = await bridge.waitForCode(email, { waitSeconds: OTP_WAIT_SECONDS });
   log(`[account] OTP ${otp.code} (message ${otp.message_id})`);
 
   const { token } = await vosko.loginWithCode(email, otp.code);
@@ -186,7 +190,11 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
       if (account?.identity?.id) {
         await bridge.updateIdentity(account.identity.id, { status: 'failed', error: err.message.slice(0, 900) }).catch(() => {});
       }
-      if (attempt < MAX_ACCOUNT_TRIES) await sleep(4000);
+      if (attempt < MAX_ACCOUNT_TRIES) {
+        const backoff = Math.min(45_000, 5_000 * attempt);
+        log(`[chunk ${chunk.index}] waiting ${backoff / 1000}s before attempt ${attempt + 1}`);
+        await sleep(backoff);
+      }
     }
   }
   throw lastError;
@@ -289,8 +297,25 @@ async function main() {
   const ordered = records.sort((a, b) => a.index - b.index);
   const byIndex = new Map(ordered.map((r) => [r.index, r]));
 
-  // Walk every planned chunk in order. A failed chunk becomes silence of the
-  // same length so the rest of the audio stays aligned with the video.
+  // Silently replacing a failed chunk with silence produces a video that looks
+  // complete but is mute for minutes, so that is now opt-in only.
+  if (failedChunks.length && !ALLOW_PARTIAL) {
+    const detail = [...failedChunks]
+      .sort((a, b) => a.index - b.index)
+      .map((c) => `#${c.index + 1} (${c.start.toFixed(2)}-${c.end.toFixed(2)}s)`)
+      .join(', ');
+    const message = `${failedChunks.length}/${chunks.length} chunk(s) failed: ${detail}. `
+      + 'Refusing to publish an output with silent holes; re-run or set ALLOW_PARTIAL=true to pad them with silence.';
+    await bridge.updateRun(run.id, {
+      status: 'failed',
+      chunk_done: records.length,
+      error: message.slice(0, 1500),
+    }).catch(() => {});
+    throw new Error(message);
+  }
+
+  // Walk every planned chunk in order. With ALLOW_PARTIAL a failed chunk becomes
+  // silence of the same length so the rest of the audio stays aligned.
   const fitted = [];
   for (const chunk of chunks) {
     const r = byIndex.get(chunk.index);
