@@ -5,3 +5,4 @@ smoke.log
 *.log
 data/languages.live.json
 .DS_Store
+work-assembly/
