@@ -7,7 +7,8 @@
   "scripts": {
     "languages": "node scripts/languages.mjs",
     "languages:render": "node scripts/languages.mjs --render-only",
-    "dub": "node scripts/run.mjs"
+    "dub": "node scripts/run.mjs",
+    "mux": "node scripts/mux.mjs"
   },
   "engines": {
     "node": ">=20"
