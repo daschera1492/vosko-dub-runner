@@ -245,6 +245,21 @@ on:
         required: false
         default: false
         type: boolean
+      max_account_tries:
+        description: 'Fresh-account attempts per chunk (more survives OTP timeouts)'
+        required: false
+        default: '4'
+        type: string
+      otp_wait_seconds:
+        description: 'Seconds to wait for each login code (30-120)'
+        required: false
+        default: '75'
+        type: string
+      allow_partial:
+        description: 'Pad failed chunks with silence instead of failing the run'
+        required: false
+        default: false
+        type: boolean
       whisper_model:
         description: 'Whisper model for silence-aware chunking'
         required: true
@@ -339,6 +354,9 @@ jobs:
           NO_CHUNK: ${{ inputs.no_chunk }}
           MAX_CHUNKS: ${{ inputs.max_chunks }}
           DEBUG_DUMP: ${{ inputs.debug_dump }}
+          MAX_ACCOUNT_TRIES: ${{ inputs.max_account_tries }}
+          OTP_WAIT_SECONDS: ${{ inputs.otp_wait_seconds }}
+          ALLOW_PARTIAL: ${{ inputs.allow_partial }}
           WHISPER_MODEL: ${{ inputs.whisper_model }}
           OUTPUT_MODE: ${{ inputs.output_mode }}
           PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}
