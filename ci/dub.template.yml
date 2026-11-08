@@ -49,6 +49,11 @@ __TARGET_OPTIONS__
         options:
           - audio
           - video
+      queue_group:
+        description: 'Optional: runs sharing this value wait for each other; leave empty to run in parallel'
+        required: false
+        default: ''
+        type: string
       publish_release:
         description: 'Publish the result as a GitHub Release asset'
         required: true
@@ -59,7 +64,10 @@ permissions:
   contents: write
 
 concurrency:
-  group: vosko-dub
+  # Each dispatch gets a unique group, so runs execute in parallel by default.
+  # Set the optional `queue_group` input to the same value on several runs to
+  # make them wait for each other instead.
+  group: vosko-dub-${{ inputs.queue_group != '' && inputs.queue_group || github.run_id }}
   cancel-in-progress: false
 
 jobs:
