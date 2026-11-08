@@ -24,7 +24,7 @@ import { spawnSync } from 'node:child_process';
 import { fetchLive, resolve } from './languages.mjs';
 import * as bridge from './lib/bridge.mjs';
 import * as vosko from './lib/vosko.mjs';
-import { buildChunks, concatDubbed, assembleFinal, probeDuration, sh, fitChunkAudio } from './lib/media.mjs';
+import { buildChunks, concatDubbed, assembleFinal, probeDuration, sh, fitChunkAudio, silenceMp3 } from './lib/media.mjs';
 
 const env = process.env;
 const INPUT_URL = env.INPUT_URL || '';
@@ -251,14 +251,14 @@ async function main() {
 
   const state = loadState();
   const records = [];
-  let failed = 0;
+  const failedChunks = [];
   for (const chunk of chunks) {
     try {
       const record = await dubChunk(chunk, { target, source, isVideo, state });
       records.push(record);
       await bridge.updateRun(run.id, { chunk_done: records.length });
     } catch (err) {
-      failed++;
+      failedChunks.push(chunk);
       log(`[chunk ${chunk.index}] FAILED: ${err.message}`);
       await bridge.updateRun(run.id, { status: 'partial', error: err.message.slice(0, 1500) }).catch(() => {});
     }
@@ -267,15 +267,27 @@ async function main() {
   if (!records.length) throw new Error('no chunk was dubbed successfully');
 
   const ordered = records.sort((a, b) => a.index - b.index);
+  const byIndex = new Map(ordered.map((r) => [r.index, r]));
+
+  // Walk every planned chunk in order. A failed chunk becomes silence of the
+  // same length so the rest of the audio stays aligned with the video.
   const fitted = [];
-  for (const r of ordered) {
+  for (const chunk of chunks) {
+    const r = byIndex.get(chunk.index);
+    if (!r) {
+      const out = path.join(OUT_DIR, `chunk-${String(chunk.index).padStart(3, '0')}-silence.mp3`);
+      await silenceMp3(chunk.duration, out);
+      log(`[merge] chunk ${chunk.index} failed; inserting ${chunk.duration.toFixed(2)}s of silence`);
+      fitted.push({ ...chunk, audioPath: out, email: '', creditsUsed: 0, status: 'missing' });
+      continue;
+    }
     const out = path.join(OUT_DIR, `chunk-${String(r.index).padStart(3, '0')}-fit.mp3`);
     const audioPath = await fitChunkAudio(r.audioPath, out, r.duration, { index: r.index });
     fitted.push({ ...r, audioPath });
   }
 
   const dubMp3 = path.join(OUT_DIR, 'dubbed.mp3');
-  log(`[merge] concatenating ${fitted.length} dubbed chunk(s)`);
+  log(`[merge] concatenating ${fitted.length} segment(s)`);
   await concatDubbed(fitted.map((r) => r.audioPath), dubMp3);
 
   const ext = OUTPUT_MODE === 'video' && isVideo ? 'mp4' : 'mp3';
@@ -284,8 +296,8 @@ async function main() {
   log(`[merge] writing final ${ext}`);
   await assembleFinal({ input: inputFile, dubbedAudio: dubMp3, outFile: finalFile, isVideo: ext === 'mp4' });
 
-  const chunkRows = ordered
-    .map((r) => `| ${r.index + 1} | ${r.start.toFixed(1)}s | ${r.duration.toFixed(1)}s | ${(r.creditsUsed || 0)} | \`${r.email}\` |`)
+  const chunkRows = fitted
+    .map((r) => `| ${r.index + 1} | ${r.start.toFixed(1)}s | ${r.duration.toFixed(1)}s | ${r.status === 'missing' ? '—' : (r.creditsUsed || 0)} | ${r.email ? `\`${r.email}\`` : '(silence)'} |`)
     .join('\n');
   const summaryMarkdown = [
     '| # | start | length | credits | account |',
@@ -295,17 +307,17 @@ async function main() {
 
   let releaseUrl = '';
   try {
-    releaseUrl = await publishRelease({ file: finalFile, runId: run.id, chunkCount: ordered.length, summaryMarkdown });
+    releaseUrl = await publishRelease({ file: finalFile, runId: run.id, chunkCount: records.length, summaryMarkdown });
   } catch (err) {
     log(`[release] ${err.message}`);
   }
 
   await bridge.updateRun(run.id, {
-    status: failed ? 'partial' : 'completed',
-    chunk_done: ordered.length,
+    status: failedChunks.length ? 'partial' : 'completed',
+    chunk_done: records.length,
     output_name: path.basename(finalFile),
     output_url: releaseUrl || '',
-    error: failed ? `${failed} chunk(s) failed` : '',
+    error: failedChunks.length ? `${failedChunks.length} chunk(s) failed` : '',
   });
 
   const result = {
@@ -315,7 +327,7 @@ async function main() {
     target,
     isVideo,
     outputMode: OUTPUT_MODE,
-    chunks: ordered,
+    chunks: fitted,
     outputFile: finalFile,
     releaseUrl,
     finishedAt: new Date().toISOString(),
@@ -332,7 +344,7 @@ async function main() {
     '',
     `- Input: ${INPUT_URL}`,
     `- Language: ${sourceRow.display} → ${targetRow.display}`,
-    `- Chunks: ${ordered.length}${failed ? ` (${failed} failed)` : ''}`,
+    `- Chunks: ${records.length}/${chunks.length}${failedChunks.length ? ` (${failedChunks.length} failed, silence inserted)` : ''}`,
     `- Release: ${releaseUrl || 'not published'}`,
     `- Bridge run: ${run.id}`,
     '',

@@ -238,6 +238,19 @@ export async function fitChunkAudio(input, outFile, seconds, { index = 0 } = {})
   return outFile;
 }
 
+/** Generate a silent MP3 of an exact length (placeholder for failed chunks). */
+export async function silenceMp3(seconds, outFile) {
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  await sh('ffmpeg', [
+    '-y', '-v', 'error',
+    '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono',
+    '-t', seconds.toFixed(3),
+    '-c:a', 'libmp3lame', '-q:a', '2',
+    outFile,
+  ]);
+  return outFile;
+}
+
 /** Re-encode and concatenate dubbed MP3 chunks with tiny fades. */export async function concatDubbed(mp3Paths, outMp3) {
   fs.mkdirSync(path.dirname(outMp3), { recursive: true });
   const listFile = outMp3.replace(/\.mp3$/i, '') + '.txt';
