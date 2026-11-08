@@ -93,9 +93,17 @@ function planCuts(words, duration, maxSeconds, hardCap, minChunk = 8) {
     const inside = gaps.filter((g) => g.t > cursor + minChunk && g.t <= cursor + maxSeconds);
     const overrun = gaps.filter((g) => g.t > cursor + maxSeconds && g.t <= cursor + hardCap);
     let cut;
-    if (inside.length) cut = inside[inside.length - 1].t;
-    else if (overrun.length) cut = overrun[0].t;
-    else cut = cursor + maxSeconds;
+    if (inside.length) {
+      // Prefer a clear pause (>=0.7s) over a barely-there 0.3s gap, so we never
+      // split a sentence when a better boundary exists in the same window.
+      const clear = inside.filter((g) => g.gap >= 0.7);
+      const pool = clear.length ? clear : inside;
+      cut = pool[pool.length - 1].t;
+    } else if (overrun.length) {
+      cut = overrun[0].t;
+    } else {
+      cut = cursor + maxSeconds;
+    }
     if (cut <= cursor + 0.5) break;
     cuts.push(cut);
     cursor = cut;
