@@ -39,6 +39,7 @@ const STATE_FILE = path.join(WORK_DIR, 'state.json');
 const MAX_ACCOUNT_TRIES = Math.max(1, Number(env.MAX_ACCOUNT_TRIES || 2));
 const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
 const PARALLEL_CHUNKS = Math.max(1, Math.min(3, Number(env.PARALLEL_CHUNKS || 2)));
+const NO_CHUNK = ['1', 'true', 'yes'].includes(String(env.NO_CHUNK || env.WHOLE_VIDEO || '').toLowerCase());
 const STARTED = new Date();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -238,6 +239,7 @@ async function main() {
     whisperModel: WHISPER_MODEL,
     sourceLanguage: source,
     video: isVideo,
+    single: NO_CHUNK,
   });
   log(`[chunk] ${chunks.length} chunk(s)`);
 

@@ -230,10 +230,19 @@ export async function buildChunks(input, outDir, {
   whisperModel = 'base',
   sourceLanguage = 'Auto',
   video = false,
+  single = false,
 } = {}) {
   fs.mkdirSync(outDir, { recursive: true });
   const duration = await probeDuration(input);
   console.log(`[chunk] source duration ${duration.toFixed(2)}s`);
+
+  // Diagnostic path: upload the untouched source as one project, exactly like
+  // a human uploading the file on the site.
+  if (single) {
+    const chunk = { index: 0, start: 0, end: round(duration), duration: round(duration), path: input, video };
+    console.log(`[chunk] single untouched file 0.00s - ${duration.toFixed(2)}s`);
+    return { duration, chunks: [chunk] };
+  }
 
   let cuts = [];
   if (duration > hardCap) {

@@ -221,6 +221,20 @@ on:
           - '30'
           - '40'
           - '52'
+      pipeline_type:
+        description: 'TTS pipeline: auto = the site choice (standard for Persian)'
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - standard
+          - ultra
+      no_chunk:
+        description: 'Upload the whole file as one project (skip ffmpeg cutting)'
+        required: true
+        default: false
+        type: boolean
       whisper_model:
         description: 'Whisper model for silence-aware chunking'
         required: true
@@ -311,6 +325,8 @@ jobs:
           SOURCE_LANG: ${{ inputs.source_lang }}
           TARGET_LANG: ${{ inputs.target_lang }}
           CHUNK_SECONDS: ${{ inputs.chunk_seconds }}
+          VOSKO_PIPELINE: ${{ inputs.pipeline_type }}
+          NO_CHUNK: ${{ inputs.no_chunk }}
           WHISPER_MODEL: ${{ inputs.whisper_model }}
           OUTPUT_MODE: ${{ inputs.output_mode }}
           PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}
