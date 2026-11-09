@@ -133,11 +133,29 @@ async function openAccount(chunkIndex) {
   return { identity, token, email };
 }
 
+/** Site-hosted mp3 URLs of a finished chunk (standard pipeline has one per subtitle block). */
+function siteMp3s(record) {
+  const list = Array.isArray(record?.audioUrls) ? record.audioUrls : [];
+  const urls = list.filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u));
+  if (!urls.length && typeof record?.audioUrl === 'string' && /^https?:\/\//i.test(record.audioUrl)) {
+    urls.push(record.audioUrl);
+  }
+  return urls;
+}
+
+function logSiteAudio(chunkIndex, record) {
+  const urls = siteMp3s(record);
+  if (!urls.length) return;
+  log(`[chunk ${chunkIndex}] site mp3 (${urls.length} file${urls.length === 1 ? '' : 's'}):`);
+  urls.forEach((url, i) => log(`[chunk ${chunkIndex}]   ${i + 1}/${urls.length}: ${url}`));
+}
+
 /** Dub one chunk with retries across fresh accounts. */
 async function dubChunk(chunk, { target, source, isVideo, state }) {
   const cached = state.chunks[chunk.index];
   if (cached?.audioPath && fs.existsSync(cached.audioPath)) {
     log(`[chunk ${chunk.index}] already done (resume): ${cached.audioPath}`);
+    logSiteAudio(chunk.index, cached);
     return cached;
   }
 
@@ -174,6 +192,8 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
         end: chunk.end,
         duration: chunk.duration,
         audioPath: result.audioPath,
+        audioUrl: result.audioUrl || '',
+        audioUrls: result.audioUrls || [],
         projectId: result.projectId,
         itemId: result.itemId,
         identityId: identity.id,
@@ -183,6 +203,7 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
       };
       state.chunks[chunk.index] = record;
       saveState(state);
+      logSiteAudio(chunk.index, record);
       return record;
     } catch (err) {
       lastError = err;

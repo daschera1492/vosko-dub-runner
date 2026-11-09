@@ -394,18 +394,26 @@ export async function dubOnAccount({ token, filePath, duration, projectName, sou
   if (url) {
     const bytes = await download(url, outPath);
     console.log(`[vosko] dubbed audio saved (${(bytes / 1024).toFixed(0)} KiB)`);
-    return { projectId, itemId: item.item_id, audioPath: outPath, audioUrl: url };
+    return { projectId, itemId: item.item_id, audioPath: outPath, audioUrl: url, audioUrls: [url] };
   }
 
   // Standard pipeline: the translated item carries one audio clip per subtitle
   // segment instead of a single merged track. Download them and lay them on a
   // silent timeline, exactly like the editor's playback does.
   console.log(`[vosko] standard pipeline: assembling per-segment audio for item ${item.item_id}`);
-  url = await assembleStandardAudio(token, projectId, item, duration, workDir);
+  const assembled = await assembleStandardAudio(token, projectId, item, duration, workDir);
   const bytes = fs.statSync(outPath).size;
-  console.log(`[vosko] dubbed audio assembled (${(bytes / 1024).toFixed(0)} KiB)`);
+  console.log(
+    `[vosko] dubbed audio assembled (${(bytes / 1024).toFixed(0)} KiB) from ${assembled.audioUrls.length} site segment(s)`,
+  );
 
-  return { projectId, itemId: item.item_id, audioPath: outPath, audioUrl: url };
+  return {
+    projectId,
+    itemId: item.item_id,
+    audioPath: outPath,
+    audioUrl: assembled.audioUrls[0] || '',
+    audioUrls: assembled.audioUrls,
+  };
 }
 
 /**
@@ -464,7 +472,7 @@ async function assembleStandardAudio(token, projectId, item, totalDuration, work
 
   const outPath = path.join(workDir, `chunk-${String(item.item_id)}.mp3`);
   await mixSegmentAudio(local, Number(totalDuration), outPath);
-  return outPath;
+  return { audioPath: outPath, audioUrls: clips.map((clip) => clip.audio) };
 }
 
 export { retry };
