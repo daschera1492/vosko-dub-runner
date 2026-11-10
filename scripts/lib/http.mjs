@@ -99,41 +99,50 @@ function openTunnel(proxy, host, port, timeoutMs) {
 /**
  * Agent that replaces the TCP connect with a proxy tunnel. The TLS handshake
  * still happens here (Node would otherwise dial the target directly).
+ *
+ * The base class has to match the target protocol: an https.Agent refuses to
+ * serve an http:// URL (ERR_INVALID_PROTOCOL), which matters for local/test
+ * API endpoints reached through the proxy.
  */
-class TunnelAgent extends https.Agent {
-  constructor(proxy, { isTls, host, timeoutMs }) {
-    super({ keepAlive: false });
-    this.proxy = proxy;
-    this.isTls = isTls;
-    this.targetHost = host;
-    this.timeoutMs = timeoutMs;
-  }
+function tunnelAgentClass(Base) {
+  return class TunnelAgent extends Base {
+    constructor(proxy, { isTls, host, timeoutMs }) {
+      super({ keepAlive: false });
+      this.proxy = proxy;
+      this.isTls = isTls;
+      this.targetHost = host;
+      this.timeoutMs = timeoutMs;
+    }
 
-  createConnection(options, callback) {
-    let settled = false;
-    const done = (err, socket) => {
-      if (settled) {
-        if (socket) socket.destroy();
-        return;
-      }
-      settled = true;
-      callback(err, socket);
-    };
-
-    const port = options.port || (this.isTls ? 443 : 80);
-    openTunnel(this.proxy, this.targetHost, port, this.timeoutMs)
-      .then((raw) => {
-        if (!this.isTls) {
-          done(null, raw);
+    createConnection(options, callback) {
+      let settled = false;
+      const done = (err, socket) => {
+        if (settled) {
+          if (socket) socket.destroy();
           return;
         }
-        const secure = tls.connect({ socket: raw, servername: this.targetHost, ALPNProtocols: ['http/1.1'] });
-        secure.once('secureConnect', () => done(null, secure));
-        secure.once('error', (err) => done(err));
-      })
-      .catch((err) => done(err));
-  }
+        settled = true;
+        callback(err, socket);
+      };
+
+      const port = options.port || (this.isTls ? 443 : 80);
+      openTunnel(this.proxy, this.targetHost, port, this.timeoutMs)
+        .then((raw) => {
+          if (!this.isTls) {
+            done(null, raw);
+            return;
+          }
+          const secure = tls.connect({ socket: raw, servername: this.targetHost, ALPNProtocols: ['http/1.1'] });
+          secure.once('secureConnect', () => done(null, secure));
+          secure.once('error', (err) => done(err));
+        })
+        .catch((err) => done(err));
+    }
+  };
 }
+
+const TunnelHttpAgent = tunnelAgentClass(http.Agent);
+const TunnelHttpsAgent = tunnelAgentClass(https.Agent);
 
 /** Same contract as fetch(), but the TCP connection goes through the proxy. */
 function proxiedRequest(url, { method, headers, body, timeoutMs, proxy }) {
@@ -141,12 +150,22 @@ function proxiedRequest(url, { method, headers, body, timeoutMs, proxy }) {
     const target = new URL(url);
     const isTls = target.protocol === 'https:';
     const mod = isTls ? https : http;
-    const agent = new TunnelAgent(proxy, { isTls, host: target.hostname, timeoutMs });
+    const agent = new (isTls ? TunnelHttpsAgent : TunnelHttpAgent)(proxy, { isTls, host: target.hostname, timeoutMs });
+
+    // Always announce the payload length. Without it Node falls back to
+    // `transfer-encoding: chunked`, and the vosko.ai gateway answers such POSTs
+    // with `400 {"code":10001,"msg":"invalid parameters"}` (the same request via
+    // fetch() or curl - which send content-length - is accepted).
+    const finalHeaders = { ...headers };
+    if (body !== undefined) {
+      finalHeaders['content-length'] = String(Buffer.byteLength(body));
+      delete finalHeaders['transfer-encoding'];
+    }
 
     const req = mod.request(
       {
         method,
-        headers,
+        headers: finalHeaders,
         agent,
         host: target.hostname,
         port: target.port || (isTls ? 443 : 80),
