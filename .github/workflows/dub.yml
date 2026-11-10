@@ -277,6 +277,16 @@ on:
         options:
           - audio
           - video
+      audio_source:
+        description: 'How to keep background music/effects: auto, export (site final MP3), mix (segments + bgm), voice (voice only)'
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - export
+          - mix
+          - voice
       parallel_chunks:
         description: 'How many chunks to dub at once (1 = safest, 2-3 = faster)'
         required: true
@@ -377,6 +387,7 @@ jobs:
           ALLOW_PARTIAL: ${{ inputs.allow_partial }}
           WHISPER_MODEL: ${{ inputs.whisper_model }}
           OUTPUT_MODE: ${{ inputs.output_mode }}
+          AUDIO_SOURCE: ${{ inputs.audio_source }}
           PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
           VDB_BASE_URL: ${{ secrets.VDB_BASE_URL }}

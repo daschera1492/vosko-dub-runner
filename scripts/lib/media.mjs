@@ -48,27 +48,56 @@ export async function extractForWhisper(input, outWav) {
 }
 
 /**
- * Lay per-subtitle voice clips on a silent timeline of `totalSeconds` and mix
- * them into one track. This mirrors what the vosko editor does in the browser
- * for the standard pipeline, where each subtitle owns its own TTS file.
+ * Lay per-subtitle voice clips on a timeline and mix them into one track.
+ * This mirrors what the vosko editor does in the browser for the standard
+ * pipeline, where each subtitle owns its own TTS file.
+ *
+ * When `bedPath` is given, that track (the site's `original_bgm_url`, i.e. the
+ * original audio with the source voice removed) is mixed underneath the voice
+ * clips. Without it the output contains speech only and loses all music and
+ * sound effects, which is the bug this option fixes.
  *
  * @param {Array<{path:string, offset:number}>} clips
  * @param {number} totalSeconds
  * @param {string} outPath
+ * @param {{bedPath?:string, bedGain?:number}} [opts]
  */
-export async function mixSegmentAudio(clips, totalSeconds, outPath) {
-  if (!clips.length) throw new Error('mixSegmentAudio: no clips');
+export async function mixSegmentAudio(clips, totalSeconds, outPath, { bedPath = '', bedGain = 1 } = {}) {
+  if (!clips.length && !bedPath) throw new Error('mixSegmentAudio: no clips and no background bed');
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  const total = Math.max(0.1, Number(totalSeconds) || 0);
+  const gain = Number.isFinite(Number(bedGain)) ? Math.max(0, Number(bedGain)) : 1;
+
   const args = ['-y', '-v', 'error'];
   for (const clip of clips) args.push('-i', clip.path);
+  const bedIndex = bedPath ? clips.length : -1;
+  if (bedPath) args.push('-i', bedPath);
 
-  const filters = clips.map((clip, i) => {
+  const filters = [];
+  const mixLabels = [];
+
+  clips.forEach((clip, i) => {
     const delay = Math.max(0, Math.round(clip.offset * 1000));
-    return `[${i}:a]aresample=44100,adelay=${delay}:all=1[a${i}]`;
+    filters.push(
+      `[${i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
+        `adelay=${delay}:all=1[a${i}]`,
+    );
+    mixLabels.push(`[a${i}]`);
   });
-  const inputs = clips.map((_, i) => `[a${i}]`).join('');
-  filters.push(`${inputs}amix=inputs=${clips.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95[mix]`);
-  filters.push(`[mix]apad=whole_dur=${totalSeconds.toFixed(3)},atrim=0:${totalSeconds.toFixed(3)}[out]`);
+
+  if (bedPath) {
+    filters.push(
+      `[${bedIndex}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
+        `volume=${gain},atrim=0:${total.toFixed(3)}[bed]`,
+    );
+    mixLabels.push('[bed]');
+  }
+
+  filters.push(
+    `${mixLabels.join('')}amix=inputs=${mixLabels.length}:normalize=0:dropout_transition=0,` +
+      `alimiter=limit=0.95[mix]`,
+  );
+  filters.push(`[mix]apad=whole_dur=${total.toFixed(3)},atrim=0:${total.toFixed(3)}[out]`);
 
   await sh('ffmpeg', [
     ...args,
