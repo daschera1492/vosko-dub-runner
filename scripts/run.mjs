@@ -17,7 +17,7 @@
  *   OUTPUT_MODE       "audio" (default) = one merged MP3; "video" = mux onto original video
  *   AUDIO_SOURCE      auto (default) | export | mix | voice — how the chunk audio is built
  *   BGM_GAIN          background-track gain when mixing locally (default 1.0)
- *   PARALLEL_CHUNKS   how many chunks to dub at once (default 2, max 3)
+ *   PARALLEL_CHUNKS   how many chunks to dub at once (default 2, max 5)
  *   MAX_ACCOUNT_TRIES per-chunk account attempts (default 4)
  *   OTP_WAIT_SECONDS  how long to wait for each login code (default 75)
  *   ALLOW_PARTIAL     "true" pads failed chunks with silence instead of failing
@@ -44,7 +44,7 @@ const MAX_ACCOUNT_TRIES = Math.max(1, Math.min(6, Number(env.MAX_ACCOUNT_TRIES |
 const OTP_WAIT_SECONDS = Math.max(30, Math.min(120, Number(env.OTP_WAIT_SECONDS || 75)));
 const ALLOW_PARTIAL = ['1', 'true', 'yes'].includes(String(env.ALLOW_PARTIAL || '').toLowerCase());
 const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
-const PARALLEL_CHUNKS = Math.max(1, Math.min(3, Number(env.PARALLEL_CHUNKS || 2)));
+const PARALLEL_CHUNKS = Math.max(1, Math.min(5, Number(env.PARALLEL_CHUNKS || 2)));
 const NO_CHUNK = ['1', 'true', 'yes'].includes(String(env.NO_CHUNK || env.WHOLE_VIDEO || '').toLowerCase());
 const MAX_CHUNKS = Math.max(0, Number(env.MAX_CHUNKS || 0)); // 0 = all (diagnostic: quick smoke test)
 // Bump whenever the audio assembly changes. Cached chunks built by an older

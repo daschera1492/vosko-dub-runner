@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       video_url:
-        description: 'Direct video or audio URL'
+        description: 'لینک ویدیو — آدرس مستقیم فایل ویدیو یا صدا (mp4 / mp3 / m4a …)'
         required: true
         type: string
       source_lang:
-        description: 'Source language (live list from vosko.ai)'
+        description: 'زبان مبدأ — فهرست زندهٔ سایت vosko.ai (Auto Detect = تشخیص خودکار)'
         required: true
         default: 'Auto Detect'
         type: choice
@@ -116,7 +116,7 @@ on:
           - 'Xhosa'
           - 'Zulu'
       target_lang:
-        description: 'Target language (live list from vosko.ai)'
+        description: 'زبان مقصد — فهرست زندهٔ سایت vosko.ai'
         required: true
         default: 'Persian (Farsi)'
         type: choice
@@ -213,7 +213,7 @@ on:
           - 'Yoruba'
           - 'Zulu'
       chunk_seconds:
-        description: 'Soft chunk length (site cap is 60s per dub)'
+        description: 'طول هر تکه — سقف خود سایت ۶۰ ثانیه است؛ ۵۲ پیشنهاد می‌شود'
         required: true
         default: '52'
         type: choice
@@ -222,7 +222,7 @@ on:
           - '40'
           - '52'
       pipeline_type:
-        description: 'TTS pipeline: auto = the site choice (standard for Persian)'
+        description: 'موتور دوبله — auto = انتخاب خود سایت (برای فارسی: standard)، standard، ultra'
         required: true
         default: auto
         type: choice
@@ -231,37 +231,37 @@ on:
           - standard
           - ultra
       no_chunk:
-        description: 'Upload the whole file as one project (skip ffmpeg cutting)'
+        description: 'بدون برش — کل فایل را یک پروژه آپلود کن (برای ویدیوی بلند کند است)'
         required: true
         default: false
         type: boolean
       max_chunks:
-        description: 'Diagnostic: only dub the first N chunks (0 = all)'
+        description: 'فقط تست — فقط N تکهٔ اول دوبله شود (0 = همه)'
         required: false
         default: '0'
         type: string
       debug_dump:
-        description: 'Diagnostic: save the raw item JSON next to the output'
+        description: 'فقط عیب‌یابی — JSON خام آیتم سایت را کنار خروجی ذخیره کن'
         required: false
         default: false
         type: boolean
       max_account_tries:
-        description: 'Fresh-account attempts per chunk (more survives OTP timeouts)'
+        description: 'تعداد تلاش با اکانت تازه برای هر تکه (بیشتر = مقاوم‌تر در برابر تأخیر کد ورود)'
         required: false
         default: '4'
         type: string
       otp_wait_seconds:
-        description: 'Seconds to wait for each login code (30-120)'
+        description: 'چند ثانیه برای کد ورود صبر شود (۳۰ تا ۱۲۰)'
         required: false
         default: '75'
         type: string
       allow_partial:
-        description: 'Pad failed chunks with silence instead of failing the run'
+        description: 'تکه‌های ناموفق را با سکوت پر کن و اجرا را شکست نده (پیش‌فرض: شکست)'
         required: false
         default: false
         type: boolean
       whisper_model:
-        description: 'Whisper model for silence-aware chunking'
+        description: 'مدل Whisper — برای پیدا کردن نقطهٔ سکوت و برش تکه‌ها'
         required: true
         default: base
         type: choice
@@ -270,7 +270,7 @@ on:
           - base
           - small
       output_mode:
-        description: 'audio = one merged MP3 (default); video = MP3 muxed onto the original video'
+        description: 'خروجی — audio = یک MP3 نهایی؛ video = همان صدا روی ویدیوی اصلی'
         required: true
         default: audio
         type: choice
@@ -278,7 +278,7 @@ on:
           - audio
           - video
       audio_source:
-        description: 'How to keep background music/effects: auto, export (site final MP3), mix (segments + bgm), voice (voice only)'
+        description: 'موسیقی/صدای محیطی — auto = خودکار، export = فایل نهایی سایت، mix = میکس سگمنت‌ها روی پس‌زمینه، voice = فقط صدا'
         required: true
         default: auto
         type: choice
@@ -288,7 +288,7 @@ on:
           - mix
           - voice
       parallel_chunks:
-        description: 'How many chunks to dub at once (1 = safest, 2-3 = faster)'
+        description: 'هم‌زمانی — چند تکه با هم دوبله شود (1 = مطمئن‌ترین، 5 = سریع‌ترین)'
         required: true
         default: '1'
         type: choice
@@ -296,13 +296,15 @@ on:
           - '1'
           - '2'
           - '3'
+          - '4'
+          - '5'
       queue_group:
-        description: 'Optional: runs sharing this value wait for each other; leave empty to run in parallel'
+        description: 'اختیاری — اجراهایی که این مقدارشان یکی است پشت سر هم می‌روند؛ خالی = موازی'
         required: false
         default: ''
         type: string
       publish_release:
-        description: 'Publish the result as a GitHub Release asset'
+        description: 'انتشار خروجی — نتیجه به‌صورت Release در گیت‌هاب منتشر شود'
         required: true
         default: true
         type: boolean
