@@ -29,6 +29,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fetchLive, resolve } from './languages.mjs';
 import * as bridge from './lib/bridge.mjs';
@@ -144,6 +145,24 @@ function throttleWaitMs(round) {
   return Math.round(raw * (0.85 + Math.random() * 0.3));
 }
 
+/**
+ * Device id for one account. The site's auth endpoints are gated behind a
+ * FingerprintJS visitor id (sent as `X-Device-Fingerprint`); without it every
+ * login is rejected with `10001 invalid parameters`, and `20031` means the id
+ * was refused and a fresh one has to be sent. The id only has to look like a
+ * visitor id (32 hex chars) and stay stable for the code + login pair, so one
+ * random value per account is exactly what a real browser would present.
+ */
+function newFingerprint() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+/** True when the site wants a different device id (missing or rejected). */
+function isFingerprintRejected(err) {
+  const code = Number(err?.code);
+  return code === 20031 || code === 10001;
+}
+
 let lastLoginAt = 0;
 
 /** Reserve the next login slot so five workers never log in at the same instant. */
@@ -164,39 +183,50 @@ async function openAccount(chunkIndex) {
   log(`[account] chunk ${chunkIndex}: ${email}${exit ? ` via ${exit.label}` : ' (runner IP)'}`);
 
   return withProxy(exit, async () => {
-    for (let round = 1; ; round++) {
+    let fingerprint = newFingerprint();
+    log(`[account] chunk ${chunkIndex}: device ${fingerprint.slice(0, 8)}…`);
+
+    for (let fpRound = 1; ; fpRound++) {
       try {
-        await waitLoginSlot();
-        await vosko.sendLoginCode(email);
-        break;
+        for (let round = 1; ; round++) {
+          try {
+            await waitLoginSlot();
+            await vosko.sendLoginCode(email, { fingerprint });
+            break;
+          } catch (err) {
+            if (!isRateLimit(err) || round >= RATE_LIMIT_ROUNDS) throw err;
+            const wait = err.retryAfterMs || throttleWaitMs(round);
+            log(`[account] code request throttled (429); waiting ${Math.round(wait / 1000)}s, then retrying the same email`);
+            await sleep(wait);
+          }
+        }
+
+        const otp = await bridge.waitForCode(email, { waitSeconds: OTP_WAIT_SECONDS });
+        log(`[account] OTP ${otp.code} (message ${otp.message_id})`);
+
+        const { token } = await vosko.loginWithCode(email, otp.code, { fingerprint });
+        await bridge.updateIdentity(identity.id, { status: 'logged_in' });
+
+        let gift = null;
+        try { gift = await vosko.claimGift(token); } catch (err) { log(`[account] gift: ${err.message}`); }
+        log(`[account] logged in, gift=${JSON.stringify(gift)}`);
+
+        let balance = Number(gift?.balance ?? gift?.gift_amount ?? 0);
+        if (!balance) {
+          // The gift response is not guaranteed; read the real balance so the
+          // per-chunk cost stays accurate and reuse starts from the right number.
+          try {
+            const info = await vosko.credits(token);
+            balance = Number(info?.balance ?? info?.gift_balance ?? 0);
+          } catch { /* keep 0: the account is retired after its first chunk */ }
+        }
+        return { identity, token, email, proxy: exit, balance, fingerprint };
       } catch (err) {
-        if (!isRateLimit(err) || round >= RATE_LIMIT_ROUNDS) throw err;
-        const wait = err.retryAfterMs || throttleWaitMs(round);
-        log(`[account] code request throttled (429); waiting ${Math.round(wait / 1000)}s, then retrying the same email`);
-        await sleep(wait);
+        if (!isFingerprintRejected(err) || fpRound >= 2) throw err;
+        fingerprint = newFingerprint();
+        log(`[account] device id rejected (${err.message.slice(0, 120)}); retrying with a fresh one`);
       }
     }
-
-    const otp = await bridge.waitForCode(email, { waitSeconds: OTP_WAIT_SECONDS });
-    log(`[account] OTP ${otp.code} (message ${otp.message_id})`);
-
-    const { token } = await vosko.loginWithCode(email, otp.code);
-    await bridge.updateIdentity(identity.id, { status: 'logged_in' });
-
-    let gift = null;
-    try { gift = await vosko.claimGift(token); } catch (err) { log(`[account] gift: ${err.message}`); }
-    log(`[account] logged in, gift=${JSON.stringify(gift)}`);
-
-    let balance = Number(gift?.balance ?? gift?.gift_amount ?? 0);
-    if (!balance) {
-      // The gift response is not guaranteed; read the real balance so the
-      // per-chunk cost stays accurate and reuse starts from the right number.
-      try {
-        const info = await vosko.credits(token);
-        balance = Number(info?.balance ?? info?.gift_balance ?? 0);
-      } catch { /* keep 0: the account is retired after its first chunk */ }
-    }
-    return { identity, token, email, proxy: exit, balance };
   });
 }
 

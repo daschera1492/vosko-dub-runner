@@ -70,7 +70,7 @@ export function enabled() {
 /** One-line, credential-free description for the run log. */
 export function status() {
   if (OFF) return 'disabled (PROXY_ENABLED=0) — every request leaves from the runner IP';
-  if (!SPEC) return 'disabled (PROXY_OXYLABS is not set) — every request leaves from the runner IP';
+  if (!SPEC) return 'requested but PROXY_OXYLABS is not set — the run will stop before any work';
   return `oxylabs residential ${SPEC.host}:${SPEC.port} — countries ${COUNTRIES.join(',')} — one sticky session per account (${SESSION_MINUTES}m)`;
 }
 

@@ -68,10 +68,19 @@ const MIME = {
   '.webm': 'video/webm',
 };
 
-/** The API wraps everything as {code,msg,data}; code 0 means success. */
-async function call(pathname, { method = 'GET', body, token, timeoutMs = 60000 } = {}) {
+/**
+ * The API wraps everything as {code,msg,data}; code 0 means success.
+ *
+ * `fingerprint` is the FingerprintJS visitor id the site sends as
+ * `X-Device-Fingerprint`. Since 2026-11 the auth endpoints reject a request
+ * without it (`10001 invalid parameters`), and answer `20031` when the id was
+ * not accepted, so the caller mints one per account and reuses it for both the
+ * code request and the login that follows.
+ */
+async function call(pathname, { method = 'GET', body, token, fingerprint, timeoutMs = 60000 } = {}) {
   const headers = { accept: 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
+  if (fingerprint) headers['x-device-fingerprint'] = fingerprint;
   const json = await requestJson(API + pathname, { method, body, headers, timeoutMs });
   if (json && json.code !== 0) {
     const err = new Error(`${method} ${pathname} -> code ${json.code}: ${json.msg || 'unknown'}`);
@@ -82,14 +91,15 @@ async function call(pathname, { method = 'GET', body, token, timeoutMs = 60000 }
   return json.data;
 }
 
-export function sendLoginCode(email) {
+export function sendLoginCode(email, { fingerprint } = {}) {
   return call(`${USER}/user/email/code`, {
     method: 'POST',
     body: { email, scene: 'login', language: 'en' },
+    fingerprint,
   });
 }
 
-export async function loginWithCode(email, code) {
+export async function loginWithCode(email, code, { fingerprint } = {}) {
   const data = await call(`${USER}/user/login/email`, {
     method: 'POST',
     body: {
@@ -100,6 +110,7 @@ export async function loginWithCode(email, code) {
       timezone: 'UTC',
       country_code: 'US',
     },
+    fingerprint,
   });
   const token = data?.token;
   if (!token) throw new Error('login succeeded but no token in response');

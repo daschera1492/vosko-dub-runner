@@ -21,6 +21,12 @@ export class HttpError extends Error {
     this.body = body;
     this.url = url;
     this.retryAfterMs = retryAfterMs;
+    // The API returns its own error code in the body (10001 bad parameters,
+    // 20019/20020 bad or expired code, 20030 throttled, 20031 fingerprint
+    // required) even when the HTTP status is a generic 400. Surface it so the
+    // callers can branch on it without re-parsing the message.
+    const code = Number(body?.code);
+    if (Number.isFinite(code)) this.code = code;
   }
 }
 
