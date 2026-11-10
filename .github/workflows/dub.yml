@@ -303,6 +303,36 @@ on:
         required: false
         default: ''
         type: string
+      proxy_enabled:
+        description: 'پروکسی — هر اکانت با یک IP مسکونی جدا (Oxylabs)؛ خاموش = IP خودِ رانر'
+        required: true
+        default: true
+        type: boolean
+      proxy_country:
+        description: 'کشور خروج پروکسی — auto یعنی بین چند کشور بچرخد (هر اکانت یک کشور)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - us
+          - de
+          - nl
+          - gb
+          - fr
+          - ca
+          - tr
+          - ae
+          - se
+          - pl
+          - es
+          - it
+          - jp
+      resume_run_id:
+        description: 'ادامهٔ اجرای قبلی — شمارهٔ Run قبلی که خروجی‌اش ادامه داده شود (خالی = از صفر)'
+        required: false
+        default: ''
+        type: string
       publish_release:
         description: 'انتشار خروجی — نتیجه به‌صورت Release در گیت‌هاب منتشر شود'
         required: true
@@ -373,6 +403,15 @@ jobs:
           TARGET_LANG: ${{ inputs.target_lang }}
         run: node scripts/languages.mjs --verify "$SOURCE_LANG" "$TARGET_LANG" --summary
 
+      - name: Restore previous work
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: dub-output
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/work
+
       - name: Dub
         id: dub
         env:
@@ -391,6 +430,9 @@ jobs:
           OUTPUT_MODE: ${{ inputs.output_mode }}
           AUDIO_SOURCE: ${{ inputs.audio_source }}
           PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}
+          PROXY_OXYLABS: ${{ secrets.PROXY_OXYLABS }}
+          PROXY_ENABLED: ${{ inputs.proxy_enabled }}
+          PROXY_COUNTRIES: ${{ inputs.proxy_country == 'auto' && 'us,de,nl,gb' || inputs.proxy_country }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
           VDB_BASE_URL: ${{ secrets.VDB_BASE_URL }}
           VDB_KEY: ${{ secrets.VDB_KEY }}
@@ -404,7 +446,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dub-output
-          path: ${{ runner.temp }}/work/out/*
+          path: |
+            ${{ runner.temp }}/work/state.json
+            ${{ runner.temp }}/work/out
           if-no-files-found: warn
 
       - name: Link

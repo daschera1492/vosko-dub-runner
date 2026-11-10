@@ -9,10 +9,13 @@ const KEY = process.env.VDB_KEY || '';
 
 function api(path, { method = 'GET', body, timeoutMs = 30000 } = {}) {
   if (!KEY) throw new Error('VDB_KEY is not set');
+  // The bridge is our own WordPress box: never spend residential proxy
+  // bandwidth on it, and never hide the runner from our own logs.
   return requestJson(BASE + path, {
     method,
     body,
     timeoutMs,
+    direct: true,
     headers: { 'x-vdb-key': KEY, accept: 'application/json' },
   });
 }

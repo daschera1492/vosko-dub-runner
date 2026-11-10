@@ -21,6 +21,10 @@
  *   MAX_ACCOUNT_TRIES per-chunk account attempts (default 4)
  *   OTP_WAIT_SECONDS  how long to wait for each login code (default 75)
  *   ALLOW_PARTIAL     "true" pads failed chunks with silence instead of failing
+ *   PROXY_OXYLABS     host:port:user:pass — Oxylabs residential proxy (optional)
+ *   PROXY_ENABLED     "false" disables the proxy even when PROXY_OXYLABS is set
+ *   PROXY_COUNTRIES   comma list of exit countries, one sticky session per account
+ *   ACCOUNT_MIN_CREDITS reuse an account until its balance drops below this
  */
 
 import fs from 'node:fs';
@@ -29,6 +33,8 @@ import { spawnSync } from 'node:child_process';
 import { fetchLive, resolve } from './languages.mjs';
 import * as bridge from './lib/bridge.mjs';
 import * as vosko from './lib/vosko.mjs';
+import * as proxy from './lib/proxy.mjs';
+import { withProxy, requestJson } from './lib/http.mjs';
 import { buildChunks, concatDubbed, assembleFinal, probeDuration, sh, fitChunkAudio, silenceMp3 } from './lib/media.mjs';
 
 const env = process.env;
@@ -42,6 +48,15 @@ const OUT_DIR = path.join(WORK_DIR, 'out');
 const STATE_FILE = path.join(WORK_DIR, 'state.json');
 const MAX_ACCOUNT_TRIES = Math.max(1, Math.min(6, Number(env.MAX_ACCOUNT_TRIES || 4)));
 const OTP_WAIT_SECONDS = Math.max(30, Math.min(120, Number(env.OTP_WAIT_SECONDS || 75)));
+// One account can dub several chunks: the gift is 200 credits and a 52s chunk
+// costs far less, so minting a login per chunk just burns the site's per-IP
+// "verification code" quota (~30, then HTTP 429 for minutes).
+const ACCOUNT_MIN_CREDITS = Math.max(0, Number(env.ACCOUNT_MIN_CREDITS || 40));
+// Space logins out even when several workers start together.
+const LOGIN_GAP_SECONDS = Math.max(0, Number(env.LOGIN_GAP_SECONDS || 45));
+// A 429 is a per-IP throttle, not an account problem: wait it out instead of
+// burning more accounts (which only makes the throttle last longer).
+const RATE_LIMIT_ROUNDS = Math.max(1, Math.min(20, Number(env.RATE_LIMIT_ROUNDS || 8)));
 const ALLOW_PARTIAL = ['1', 'true', 'yes'].includes(String(env.ALLOW_PARTIAL || '').toLowerCase());
 const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
 const PARALLEL_CHUNKS = Math.max(1, Math.min(5, Number(env.PARALLEL_CHUNKS || 2)));
@@ -118,24 +133,105 @@ function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
+/** A 429 from the site (code 20030) means "this IP asked for too many codes". */
+function isRateLimit(err) {
+  return Number(err?.status) === 429 || Number(err?.code) === 20030 || /HTTP 429/.test(String(err?.message || ''));
+}
+
+/** Long, jittered wait for a per-IP throttle. */
+function throttleWaitMs(round) {
+  const raw = Math.min(15 * 60_000, 60_000 * 2 ** Math.max(0, round - 1));
+  return Math.round(raw * (0.85 + Math.random() * 0.3));
+}
+
+let lastLoginAt = 0;
+
+/** Reserve the next login slot so five workers never log in at the same instant. */
+async function waitLoginSlot() {
+  const gap = LOGIN_GAP_SECONDS * 1000;
+  if (!gap) return;
+  const now = Date.now();
+  const at = Math.max(now, lastLoginAt + gap);
+  lastLoginAt = at;
+  if (at > now) await sleep(at - now);
+}
+
 /** New account from the bridge: email -> OTP -> JWT -> gift credits. */
 async function openAccount(chunkIndex) {
   const identity = await bridge.mintIdentity(globalThis.RUN_ID, chunkIndex);
   const email = identity.email;
-  log(`[account] chunk ${chunkIndex}: ${email}`);
+  const exit = proxy.forIdentity(identity.id);
+  log(`[account] chunk ${chunkIndex}: ${email}${exit ? ` via ${exit.label}` : ' (runner IP)'}`);
 
-  await vosko.sendLoginCode(email);
-  const otp = await bridge.waitForCode(email, { waitSeconds: OTP_WAIT_SECONDS });
-  log(`[account] OTP ${otp.code} (message ${otp.message_id})`);
+  return withProxy(exit, async () => {
+    for (let round = 1; ; round++) {
+      try {
+        await waitLoginSlot();
+        await vosko.sendLoginCode(email);
+        break;
+      } catch (err) {
+        if (!isRateLimit(err) || round >= RATE_LIMIT_ROUNDS) throw err;
+        const wait = err.retryAfterMs || throttleWaitMs(round);
+        log(`[account] code request throttled (429); waiting ${Math.round(wait / 1000)}s, then retrying the same email`);
+        await sleep(wait);
+      }
+    }
 
-  const { token } = await vosko.loginWithCode(email, otp.code);
-  await bridge.updateIdentity(identity.id, { status: 'logged_in' });
+    const otp = await bridge.waitForCode(email, { waitSeconds: OTP_WAIT_SECONDS });
+    log(`[account] OTP ${otp.code} (message ${otp.message_id})`);
 
-  let gift = null;
-  try { gift = await vosko.claimGift(token); } catch (err) { log(`[account] gift: ${err.message}`); }
-  log(`[account] logged in, gift=${JSON.stringify(gift)}`);
+    const { token } = await vosko.loginWithCode(email, otp.code);
+    await bridge.updateIdentity(identity.id, { status: 'logged_in' });
 
-  return { identity, token, email };
+    let gift = null;
+    try { gift = await vosko.claimGift(token); } catch (err) { log(`[account] gift: ${err.message}`); }
+    log(`[account] logged in, gift=${JSON.stringify(gift)}`);
+
+    let balance = Number(gift?.balance ?? gift?.gift_amount ?? 0);
+    if (!balance) {
+      // The gift response is not guaranteed; read the real balance so the
+      // per-chunk cost stays accurate and reuse starts from the right number.
+      try {
+        const info = await vosko.credits(token);
+        balance = Number(info?.balance ?? info?.gift_balance ?? 0);
+      } catch { /* keep 0: the account is retired after its first chunk */ }
+    }
+    return { identity, token, email, proxy: exit, balance };
+  });
+}
+
+/**
+ * Account for a worker slot. The same account keeps dubbing chunks until its
+ * credit balance drops below ACCOUNT_MIN_CREDITS, which keeps the number of
+ * logins (and therefore the site's per-IP code quota) low.
+ */
+const activeAccounts = new Map();
+
+async function ensureAccount(slot, chunkIndex) {
+  const current = activeAccounts.get(slot);
+  if (current && current.balance >= ACCOUNT_MIN_CREDITS) {
+    log(`[account] slot ${slot}: reusing ${current.email} (balance ${current.balance})`);
+    return current;
+  }
+  if (current) {
+    log(`[account] slot ${slot}: retiring ${current.email} (balance ${current.balance} < ${ACCOUNT_MIN_CREDITS})`);
+    activeAccounts.delete(slot);
+  }
+  const fresh = await openAccount(chunkIndex);
+  activeAccounts.set(slot, fresh);
+  return fresh;
+}
+
+function retireAccount(slot) {
+  activeAccounts.delete(slot);
+}
+
+async function refreshBalance(account) {
+  try {
+    const info = await withProxy(account.proxy, () => vosko.credits(account.token));
+    const balance = Number(info?.balance ?? info?.gift_balance);
+    if (Number.isFinite(balance)) account.balance = balance;
+  } catch { /* keep the previous estimate; the next chunk will notice */ }
 }
 
 /** Site-hosted mp3 URLs of a finished chunk (standard pipeline has one per subtitle block). */
@@ -155,8 +251,8 @@ function logSiteAudio(chunkIndex, record) {
   urls.forEach((url, i) => log(`[chunk ${chunkIndex}]   ${i + 1}/${urls.length}: ${url}`));
 }
 
-/** Dub one chunk with retries across fresh accounts. */
-async function dubChunk(chunk, { target, source, isVideo, state }) {
+/** Dub one chunk on this worker's account, minting a new one only when needed. */
+async function dubChunk(chunk, { target, source, isVideo, state, slot }) {
   const cached = state.chunks[chunk.index];
   if (cached?.audioPath && fs.existsSync(cached.audioPath)) {
     const version = Number(cached.mixVersion || 0);
@@ -171,30 +267,34 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
   }
 
   let lastError;
+  let throttles = 0;
+
   for (let attempt = 1; attempt <= MAX_ACCOUNT_TRIES; attempt++) {
     let account = null;
     try {
-      account = await openAccount(chunk.index);
+      account = await ensureAccount(slot, chunk.index);
       const { token, identity } = account;
+      const before = account.balance;
       const projectName = `vdb-${globalThis.RUN_ID}-${chunk.index}-${attempt}-${Date.now().toString(36).slice(-4)}`.slice(0, 60);
 
-      const result = await vosko.dubOnAccount({
-        token,
-        filePath: chunk.path,
-        duration: chunk.duration,
-        projectName,
-        source,
-        target,
-        workDir: OUT_DIR,
-      });
+      const result = await withProxy(account.proxy, () =>
+        vosko.dubOnAccount({
+          token,
+          filePath: chunk.path,
+          duration: chunk.duration,
+          projectName,
+          source,
+          target,
+          workDir: OUT_DIR,
+        }));
 
-      const balance = await vosko.credits(token).catch(() => null);
-      const used = 200 - Number(balance?.balance ?? 200);
+      await refreshBalance(account);
+      const used = Math.max(0, before - account.balance);
       await bridge.updateIdentity(identity.id, {
         status: 'done',
         project_id: result.projectId,
         item_id: result.itemId,
-        credits_used: used > 0 ? used : 0,
+        credits_used: used,
       });
 
       const record = {
@@ -214,7 +314,7 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
         itemId: result.itemId,
         identityId: identity.id,
         email: account.email,
-        creditsUsed: used > 0 ? used : 0,
+        creditsUsed: used,
         status: 'done',
       };
       state.chunks[chunk.index] = record;
@@ -228,9 +328,22 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
     } catch (err) {
       lastError = err;
       log(`[chunk ${chunk.index}] attempt ${attempt} failed: ${err.message}`);
+
+      // 429 is a per-IP throttle, not an account problem: a fresh account would
+      // be throttled just the same. Wait it out and retry without burning a try.
+      if (isRateLimit(err) && throttles < RATE_LIMIT_ROUNDS) {
+        throttles += 1;
+        const wait = err.retryAfterMs || throttleWaitMs(throttles);
+        log(`[chunk ${chunk.index}] rate limited; waiting ${Math.round(wait / 1000)}s (${throttles}/${RATE_LIMIT_ROUNDS})`);
+        await sleep(wait);
+        attempt -= 1;
+        continue;
+      }
+
       if (account?.identity?.id) {
         await bridge.updateIdentity(account.identity.id, { status: 'failed', error: err.message.slice(0, 900) }).catch(() => {});
       }
+      retireAccount(slot);
       if (attempt < MAX_ACCOUNT_TRIES) {
         const backoff = Math.min(45_000, 5_000 * attempt);
         log(`[chunk ${chunk.index}] waiting ${backoff / 1000}s before attempt ${attempt + 1}`);
@@ -278,6 +391,19 @@ async function main() {
   const target = targetRow.value;
   log(`[lang] ${sourceRow.display} (${source}) -> ${targetRow.display} (${target})`);
   log(`[audio] source=${(process.env.AUDIO_SOURCE || 'auto').toLowerCase()} mix-version=${MIX_VERSION}`);
+  log(`[proxy] ${proxy.status()}`);
+  proxy.assertConfigured();
+  if (proxy.enabled()) {
+    // One cheap canary so a wrong password or a dead endpoint shows up in the
+    // first seconds instead of after twenty chunks.
+    try {
+      const probe = await withProxy(proxy.forIdentity('startup-probe'), () =>
+        requestJson('https://ipinfo.io/json', { timeoutMs: 20000 }));
+      log(`[proxy] exit ip ${probe?.ip || '?'} (${probe?.country || '?'}) — api calls only, media stays direct`);
+    } catch (err) {
+      log(`[proxy] WARNING probe failed: ${err.message}`);
+    }
+  }
 
   const { file: inputFile } = await downloadInput(INPUT_URL, WORK_DIR);
   const duration = await probeDuration(inputFile);
@@ -316,11 +442,11 @@ async function main() {
   const workers = Math.min(PARALLEL_CHUNKS, chunks.length);
   log(`[chunk] dubbing up to ${workers} chunk(s) at a time`);
 
-  const runWorker = async () => {
+  const runWorker = async (slot) => {
     while (queue.length) {
       const chunk = queue.shift();
       try {
-        const record = await dubChunk(chunk, { target, source, isVideo, state });
+        const record = await dubChunk(chunk, { target, source, isVideo, state, slot });
         records.push(record);
         await bridge.updateRun(run.id, { chunk_done: records.length }).catch(() => {});
         log(`[chunk ${chunk.index}] finished (${records.length}/${chunks.length})`);
@@ -332,7 +458,7 @@ async function main() {
     }
   };
 
-  await Promise.all(Array.from({ length: workers }, () => runWorker()));
+  await Promise.all(Array.from({ length: workers }, (_, slot) => runWorker(slot)));
 
   if (!records.length) throw new Error('no chunk was dubbed successfully');
 
