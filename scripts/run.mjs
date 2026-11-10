@@ -15,6 +15,8 @@
  *   GH_TOKEN + GITHUB_REPOSITORY   enable release publishing
  *   PUBLISH_RELEASE   "false" disables publishing
  *   OUTPUT_MODE       "audio" (default) = one merged MP3; "video" = mux onto original video
+ *   AUDIO_SOURCE      auto (default) | export | mix | voice — how the chunk audio is built
+ *   BGM_GAIN          background-track gain when mixing locally (default 1.0)
  *   PARALLEL_CHUNKS   how many chunks to dub at once (default 2, max 3)
  *   MAX_ACCOUNT_TRIES per-chunk account attempts (default 4)
  *   OTP_WAIT_SECONDS  how long to wait for each login code (default 75)
@@ -45,6 +47,9 @@ const OUTPUT_MODE = (env.OUTPUT_MODE || 'audio').toLowerCase() === 'video' ? 'vi
 const PARALLEL_CHUNKS = Math.max(1, Math.min(3, Number(env.PARALLEL_CHUNKS || 2)));
 const NO_CHUNK = ['1', 'true', 'yes'].includes(String(env.NO_CHUNK || env.WHOLE_VIDEO || '').toLowerCase());
 const MAX_CHUNKS = Math.max(0, Number(env.MAX_CHUNKS || 0)); // 0 = all (diagnostic: quick smoke test)
+// Bump whenever the audio assembly changes. Cached chunks built by an older
+// version are re-dubbed instead of being reused without their background track.
+const MIX_VERSION = 3;
 const STARTED = new Date();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -154,9 +159,15 @@ function logSiteAudio(chunkIndex, record) {
 async function dubChunk(chunk, { target, source, isVideo, state }) {
   const cached = state.chunks[chunk.index];
   if (cached?.audioPath && fs.existsSync(cached.audioPath)) {
-    log(`[chunk ${chunk.index}] already done (resume): ${cached.audioPath}`);
-    logSiteAudio(chunk.index, cached);
-    return cached;
+    const version = Number(cached.mixVersion || 0);
+    if (version >= MIX_VERSION) {
+      log(`[chunk ${chunk.index}] already done (resume): ${cached.audioPath}`);
+      logSiteAudio(chunk.index, cached);
+      return cached;
+    }
+    log(
+      `[chunk ${chunk.index}] cached audio predates background mixing (v${version || '?'} < v${MIX_VERSION}); re-dubbing`,
+    );
   }
 
   let lastError;
@@ -194,6 +205,11 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
         audioPath: result.audioPath,
         audioUrl: result.audioUrl || '',
         audioUrls: result.audioUrls || [],
+        bgmUrl: result.bgmUrl || '',
+        hasBgm: Boolean(result.hasBgm),
+        audioSource: result.audioSource || 'unknown',
+        segmentCount: result.segmentCount || 0,
+        mixVersion: MIX_VERSION,
         projectId: result.projectId,
         itemId: result.itemId,
         identityId: identity.id,
@@ -203,6 +219,10 @@ async function dubChunk(chunk, { target, source, isVideo, state }) {
       };
       state.chunks[chunk.index] = record;
       saveState(state);
+      log(
+        `[chunk ${chunk.index}] audio source=${record.audioSource}, background=${record.hasBgm ? 'yes' : 'NO'}` +
+          (record.segmentCount ? `, ${record.segmentCount} segment(s)` : ''),
+      );
       logSiteAudio(chunk.index, record);
       return record;
     } catch (err) {
@@ -257,6 +277,7 @@ async function main() {
   const source = sourceRow.value;
   const target = targetRow.value;
   log(`[lang] ${sourceRow.display} (${source}) -> ${targetRow.display} (${target})`);
+  log(`[audio] source=${(process.env.AUDIO_SOURCE || 'auto').toLowerCase()} mix-version=${MIX_VERSION}`);
 
   const { file: inputFile } = await downloadInput(INPUT_URL, WORK_DIR);
   const duration = await probeDuration(inputFile);
@@ -363,11 +384,13 @@ async function main() {
   await assembleFinal({ input: inputFile, dubbedAudio: dubMp3, outFile: finalFile, isVideo: ext === 'mp4' });
 
   const chunkRows = fitted
-    .map((r) => `| ${r.index + 1} | ${r.start.toFixed(1)}s | ${r.duration.toFixed(1)}s | ${r.status === 'missing' ? '—' : (r.creditsUsed || 0)} | ${r.email ? `\`${r.email}\`` : '(silence)'} |`)
+    .map((r) => `| ${r.index + 1} | ${r.start.toFixed(1)}s | ${r.duration.toFixed(1)}s | ${r.status === 'missing' ? '—' : (r.creditsUsed || 0)} | ${r.status === 'missing' ? '—' : (r.hasBgm ? 'yes' : 'no')} | ${r.status === 'missing' ? '—' : (r.audioSource || '')} | ${r.email ? `\`${r.email}\`` : '(silence)'} |`)
     .join('\n');
+  const withBgm = fitted.filter((r) => r.status !== 'missing' && r.hasBgm).length;
+  const dubbedCount = fitted.filter((r) => r.status !== 'missing').length;
   const summaryMarkdown = [
-    '| # | start | length | credits | account |',
-    '|---|---|---|---|---|',
+    '| # | start | length | credits | background | source | account |',
+    '|---|---|---|---|---|---|---|',
     chunkRows,
   ].join('\n');
 
@@ -411,6 +434,7 @@ async function main() {
     `- Input: ${INPUT_URL}`,
     `- Language: ${sourceRow.display} → ${targetRow.display}`,
     `- Chunks: ${records.length}/${chunks.length}${failedChunks.length ? ` (${failedChunks.length} failed, silence inserted)` : ''}`,
+    `- Background audio: ${withBgm}/${dubbedCount} dubbed chunk(s) include music/effects`,
     `- Release: ${releaseUrl || 'not published'}`,
     `- Bridge run: ${run.id}`,
     '',
