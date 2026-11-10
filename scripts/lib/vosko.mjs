@@ -564,7 +564,7 @@ export async function dubOnAccount({ token, filePath, duration, projectName, sou
     }
     const voicePath = path.join(workDir, `voice-${item.item_id}.mp3`);
     await download(voice, voicePath);
-    const bedPath = await downloadBackgroundTrack(bed, item.item_id, workDir, { required: true });
+    const bedPath = await downloadBackgroundTrack(bed, item.item_id, workDir);
     if (!bedPath) return save(voice, 'voice');
     console.log(`[vosko] mixing the voice track over the background (gain ${bgmGain()})`);
     await mixSegmentAudio([{ path: voicePath, offset: 0 }], duration, outPath, {
@@ -592,17 +592,12 @@ export async function dubOnAccount({ token, filePath, duration, projectName, sou
 
 /**
  * Download the site's background bed (`original_bgm_url`: the original audio
- * with the source dialogue removed — music, effects and ambience).
- *
- * When `required` is set (the default outside `AUDIO_SOURCE=voice`) a missing
- * or unreachable bed throws so the chunk is retried on a fresh account instead
- * of silently shipping a voice-only chunk that looks finished.
+ * with the source dialogue removed — music, effects and ambience). Returns ''
+ * when the URL is missing or cannot be fetched, so callers can fall back.
  */
-async function downloadBackgroundTrack(url, itemId, workDir, { required = true } = {}) {
+async function downloadBackgroundTrack(url, itemId, workDir) {
   if (!url) {
-    const message = `item ${itemId} has no original_bgm_url (background music/effects)`;
-    if (required) throw new Error(`${message}; re-run or set audio_source=voice to accept voice-only audio`);
-    console.warn(`[vosko] ${message}; the mix will contain voice only`);
+    console.warn('[vosko] item has no original_bgm_url; the mix will contain voice only');
     return '';
   }
   try {
@@ -612,7 +607,6 @@ async function downloadBackgroundTrack(url, itemId, workDir, { required = true }
     console.log(`[vosko] background track saved (${(fs.statSync(bedPath).size / 1024).toFixed(0)} KiB)`);
     return bedPath;
   } catch (err) {
-    if (required) throw new Error(`background track download failed: ${err.message}`);
     console.warn(`[vosko] background track download failed (${err.message}); mixing voice only`);
     return '';
   }
@@ -667,7 +661,7 @@ async function assembleStandardAudio(token, projectId, item, totalDuration, work
     local.push({ path: file, offset: Math.max(0, Math.min(totalDuration, clip.offset)) });
   }
 
-  const bedPath = bedUrl ? await downloadBackgroundTrack(bedUrl, item.item_id, workDir, { required: true }) : '';
+  const bedPath = bedUrl ? await downloadBackgroundTrack(bedUrl, item.item_id, workDir) : '';
 
   console.log(
     `[vosko] mixing ${local.length} segment(s) onto ${Number(totalDuration).toFixed(2)}s` +

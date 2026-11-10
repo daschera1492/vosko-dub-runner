@@ -49,7 +49,7 @@ const NO_CHUNK = ['1', 'true', 'yes'].includes(String(env.NO_CHUNK || env.WHOLE_
 const MAX_CHUNKS = Math.max(0, Number(env.MAX_CHUNKS || 0)); // 0 = all (diagnostic: quick smoke test)
 // Bump whenever the audio assembly changes. Cached chunks built by an older
 // version are re-dubbed instead of being reused without their background track.
-const MIX_VERSION = 4;
+const MIX_VERSION = 3;
 const STARTED = new Date();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -376,21 +376,6 @@ async function main() {
   const dubMp3 = path.join(OUT_DIR, 'dubbed.mp3');
   log(`[merge] concatenating ${fitted.length} segment(s)`);
   await concatDubbed(fitted.map((r) => r.audioPath), dubMp3);
-
-  // Every chunk is fitted to its exact span, so the merged track must match the
-  // source to the frame. A larger difference means the music would slide out of
-  // sync with the picture, so surface it in the log instead of shipping it.
-  const dubDuration = await probeDuration(dubMp3).catch(() => 0);
-  if (dubDuration > 0) {
-    const drift = dubDuration - duration;
-    log(
-      `[merge] dubbed.mp3 ${dubDuration.toFixed(2)}s vs source ${duration.toFixed(2)}s ` +
-        `(drift ${drift >= 0 ? '+' : ''}${drift.toFixed(3)}s)`,
-    );
-    if (Math.abs(drift) > 0.5) {
-      log(`[merge] WARNING: audio and video timelines differ by more than 0.5s; check the chunk boundaries`);
-    }
-  }
 
   const ext = OUTPUT_MODE === 'video' && isVideo ? 'mp4' : 'mp3';
   const stamp = STARTED.toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');

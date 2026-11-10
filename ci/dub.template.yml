@@ -98,11 +98,6 @@ __TARGET_OPTIONS__
           - export
           - mix
           - voice
-      bgm_gain:
-        description: 'Background music/effects level when mixing locally (1 = original level)'
-        required: false
-        default: '1'
-        type: string
       parallel_chunks:
         description: 'How many chunks to dub at once (1 = safest, 2-3 = faster)'
         required: true
@@ -204,7 +199,6 @@ jobs:
           WHISPER_MODEL: ${{ inputs.whisper_model }}
           OUTPUT_MODE: ${{ inputs.output_mode }}
           AUDIO_SOURCE: ${{ inputs.audio_source }}
-          BGM_GAIN: ${{ inputs.bgm_gain }}
           PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
           VDB_BASE_URL: ${{ secrets.VDB_BASE_URL }}

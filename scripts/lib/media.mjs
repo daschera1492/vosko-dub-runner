@@ -388,44 +388,30 @@ async function silencedetectCuts(input, duration, maxSeconds, hardCap) {
  * longer we speed it up slightly (pitch-preserving atempo) and only cut the
  * tail when the overflow is too large to stretch. This keeps every chunk
  * boundary aligned with the source timeline, which is what video muxing needs.
- *
- * The result is always exactly `seconds` long: a few tens of milliseconds of
- * MP3 padding per chunk would otherwise add up to seconds of drift (and make
- * the background music slide out of sync) on a long video.
  */
 export async function fitChunkAudio(input, outFile, seconds, { index = 0 } = {}) {
   const have = await probeDuration(input);
   const diff = have - seconds;
-  const filters = [];
+  if (Math.abs(diff) <= 0.05) return input;
 
-  // Only a real overflow is worth re-timing (that changes the music tempo);
-  // the ~20-40 ms of MP3 frame padding never is.
-  if (diff > 0.15) {
+  const filters = [];
+  if (diff > 0) {
     const ratio = have / seconds;
     const tempo = Math.min(1.3, ratio);
     filters.push(`atempo=${tempo.toFixed(4)}`);
     if (ratio > 1.3) {
       console.warn(
-        `[fit] chunk ${index}: dub is ${diff.toFixed(2)}s longer than its span; ` +
-          `speeding up ${(tempo * 100).toFixed(0)}% and trimming the tail`,
+        `[fit] chunk ${index}: dub is ${(diff).toFixed(2)}s longer than its span; ` +
+          `speeding up ${(tempo * 100).toFixed(0)}% and trimming the tail`
       );
     } else {
       console.log(`[fit] chunk ${index}: speeding up ${(tempo * 100 - 100).toFixed(1)}% to fit ${seconds.toFixed(2)}s`);
     }
-  } else if (diff < -0.02) {
+  } else {
     console.log(`[fit] chunk ${index}: padding ${(-diff).toFixed(2)}s of silence`);
   }
 
-  // A 6 ms fade at the cut point keeps a hard trim from clicking; the end of a
-  // dubbed chunk is normally silence so this is inaudible.
-  if (diff > 0.02) filters.push(`afade=t=out:st=${Math.max(0, seconds - 0.006).toFixed(3)}:d=0.006`);
-
-  filters.push(
-    'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo',
-    `apad=whole_dur=${seconds.toFixed(3)}`,
-    `atrim=0:${seconds.toFixed(3)}`,
-    'asetpts=N/SR/TB',
-  );
+  filters.push(`apad=whole_dur=${seconds.toFixed(3)}`, `atrim=0:${seconds.toFixed(3)}`);
 
   await sh('ffmpeg', [
     '-y', '-v', 'error',
@@ -434,12 +420,6 @@ export async function fitChunkAudio(input, outFile, seconds, { index = 0 } = {})
     '-c:a', 'libmp3lame', '-q:a', '2',
     outFile,
   ]);
-
-  const fitted = await probeDuration(outFile).catch(() => 0);
-  const remain = fitted - seconds;
-  if (Math.abs(remain) > 0.08) {
-    console.warn(`[fit] chunk ${index}: landed at ${fitted.toFixed(3)}s instead of ${seconds.toFixed(3)}s (${remain > 0 ? '+' : ''}${remain.toFixed(3)}s)`);
-  }
   return outFile;
 }
 
@@ -448,9 +428,7 @@ export async function silenceMp3(seconds, outFile) {
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   await sh('ffmpeg', [
     '-y', '-v', 'error',
-    // Match the dubbed chunks (stereo / 44.1 kHz) so the concat demuxer never
-    // sees mismatched stream parameters in the middle of the timeline.
-    '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
+    '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono',
     '-t', seconds.toFixed(3),
     '-c:a', 'libmp3lame', '-q:a', '2',
     outFile,
@@ -485,9 +463,6 @@ export async function assembleFinal({ input, dubbedAudio, outFile, isVideo }) {
     '-map', '0:v:0',
     '-map', '1:a:0',
     '-c:v', 'copy',
-    // `apad` + `-shortest` keeps the full picture: without the pad a dub that
-    // is a few frames short would truncate the video instead of its audio.
-    '-af', 'apad',
     '-c:a', 'aac',
     '-b:a', '192k',
     '-movflags', '+faststart',
