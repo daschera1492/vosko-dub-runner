@@ -8,7 +8,8 @@
  *   SOURCE_LANG       display name or API value (default Auto)
  *   TARGET_LANG       display name or API value (required)
  *   CHUNK_SECONDS     soft chunk length, default 52 on bridge / 30 on emailnator
- *                     (a 50-credit gift only pays for ~40s of dubbing)
+ *                     (Flash bills 25 credits per 30s block, 50-credit gift)
+ *   VOSKO_PIPELINE    auto (default) | ultra | cheap (Flash) | standard (ElevenLabs)
  *   WHISPER_MODEL     tiny|base|small (default base)
  *   WORK_DIR          scratch dir (default ./work)
  *   VDB_BASE_URL      bridge REST base
@@ -52,25 +53,30 @@ const idp = await import(IDENTITY_PROVIDER === 'emailnator' ? './lib/emailnator.
 const INPUT_URL = env.INPUT_URL || '';
 const TARGET_INPUT = env.TARGET_LANG || '';
 const SOURCE_INPUT = env.SOURCE_LANG || 'Auto';
-// The site's registration gift is 50 credits and a chunk costs ~1.16 credits
-// per second (measured: 50.12s -> 58 credits), so anything above ~40s cannot
-// be paid for by a fresh account. The emailnator runner therefore caps chunks
-// lower; the bridge runner keeps the old 56s ceiling.
+// The site bills dubbing per 30-second block and the tier sets the price per
+// block: Ultra 35, Flash 25, ElevenLabs 58 credits. A fresh account gets 50
+// credits, so the emailnator runner uses the Flash tier ("cheap" in the API)
+// and ~30s chunks: one block each, two chunks per gift. The bridge runner
+// keeps the site default tier and the old 56s ceiling.
 const HARD_CAP_SECONDS = IDENTITY_PROVIDER === 'emailnator' ? 38 : 56;
 const CHUNK_SECONDS = Math.min(
   HARD_CAP_SECONDS,
   Math.max(20, Number(env.CHUNK_SECONDS || (IDENTITY_PROVIDER === 'emailnator' ? 30 : 52))),
 ); // site cap is 60s
+if (!env.VOSKO_PIPELINE) env.VOSKO_PIPELINE = IDENTITY_PROVIDER === 'emailnator' ? 'cheap' : 'auto';
 const WHISPER_MODEL = env.WHISPER_MODEL || 'base';
 const WORK_DIR = path.resolve(env.WORK_DIR || 'work');
 const OUT_DIR = path.join(WORK_DIR, 'out');
 const STATE_FILE = path.join(WORK_DIR, 'state.json');
 const MAX_ACCOUNT_TRIES = Math.max(1, Math.min(6, Number(env.MAX_ACCOUNT_TRIES || 4)));
 const OTP_WAIT_SECONDS = Math.max(30, Math.min(120, Number(env.OTP_WAIT_SECONDS || 75)));
-// One account can dub several chunks: a 50-credit gift barely covers a 40s
-// chunk, so a login per chunk is normal on the emailnator runner. Reusing an
-// account is still worth it on the bridge runner (no temp-mail quota there).
-const ACCOUNT_MIN_CREDITS = Math.max(0, Number(env.ACCOUNT_MIN_CREDITS || 40));
+// Flash bills 25 credits per 30s block, so a 50-credit account can dub two
+// short chunks; keep it while at least one block is affordable. The bridge
+// runner's deeper pockets keep the old threshold.
+const ACCOUNT_MIN_CREDITS = Math.max(
+  0,
+  Number(env.ACCOUNT_MIN_CREDITS || (IDENTITY_PROVIDER === 'emailnator' ? 25 : 40)),
+);
 // Space logins out even when several workers start together.
 const LOGIN_GAP_SECONDS = Math.max(0, Number(env.LOGIN_GAP_SECONDS || 45));
 // A 429 is a per-IP throttle, not an account problem: wait it out instead of
@@ -457,6 +463,10 @@ async function main() {
   const duration = await probeDuration(inputFile);
   const isVideo = await isVideoFile(inputFile);
   log(`[input] ${path.basename(inputFile)} ${duration.toFixed(1)}s, ${isVideo ? 'video' : 'audio'}`);
+  {
+    const tier = vosko.pipelineTypeFor(target);
+    log(`[pipeline] ${tier} — ${vosko.pipelineBlockCredits(tier)} credits per 30s block (chunks ≤${HARD_CAP_SECONDS}s)`);
+  }
 
   let { chunks } = await buildChunks(inputFile, path.join(WORK_DIR, 'chunks'), {
     maxSeconds: CHUNK_SECONDS,

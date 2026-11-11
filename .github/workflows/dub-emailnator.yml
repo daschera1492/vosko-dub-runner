@@ -9,9 +9,12 @@
 # The address always uses the dot alias only (the ".Gmail" toggle): emailnator
 # issues `name.with.dots@gmail.com` and the other three alias types stay off.
 #
-# Credit budget: a fresh account gets 50 credits and a chunk costs ~1.16
-# credits per second, so run.mjs caps chunks at 38s here (a 50s chunk needs 58
-# and fails with HTTP 402 "insufficient credits"). Keep chunk_seconds <= 40.
+# Credit budget: dubbing is billed per 30-second block and the tier sets the
+# price — Ultra 35, Flash 25, ElevenLabs 58 credits. A fresh account gets 50
+# credits, so this runner forces the Flash tier (VOSKO_PIPELINE=cheap) and
+# chunks of ~30s: 25 credits each, two chunks per gift. (The old failure
+# "need 58, balance 50" was the ElevenLabs tier, 116 credits/min.)
+# Keep chunk_seconds <= 30 unless you raise ACCOUNT_MIN_CREDITS accordingly.
 #
 # Caveat: the free inbox is public — fine for a one-time login code, never for
 # anything private.
@@ -231,23 +234,23 @@ on:
           - 'Yoruba'
           - 'Zulu'
       chunk_seconds:
-        description: 'طول هر تکه — هدیهٔ ثبت‌نام ۵۰ کردیت است و هر ثانیه دوبله ~۱.۱۶ کردیت؛ سقف ~۳۸ ثانیه'
+        description: 'طول هر تکه — Flash هر بلوک ۳۰ثانیه‌ای ۲۵ کردیت است و هدیهٔ ۵۰ کردیتی دو تکه می‌دهد'
         required: true
         default: '30'
         type: choice
         options:
           - '20'
           - '30'
-          - '40'
       pipeline_type:
-        description: 'موتور دوبله — auto = انتخاب خود سایت (برای فارسی: standard)، standard، ultra'
+        description: 'موتور دوبله — cheap = Flash (۵۰ کردیت/دقیقه)، ultra = ۷۰، standard = ElevenLabs ۱۱۶'
         required: true
-        default: auto
+        default: cheap
         type: choice
         options:
-          - auto
-          - standard
+          - cheap
           - ultra
+          - standard
+          - auto
       no_chunk:
         description: 'بدون برش — کل فایل را یک پروژه آپلود کن (برای ویدیوی بلند کند است)'
         required: true

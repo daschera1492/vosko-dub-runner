@@ -41,10 +41,40 @@ export const ULTRA_LANGUAGES = new Set([
   'Swedish',
 ]);
 
-/** "auto" mirrors the site; VOSKO_PIPELINE can force a value for diagnostics. */
+/**
+ * Dubbing tiers and their list price, straight from the workspace UI:
+ *   ultra    "Ultra"       70 credits/min, 19 languages
+ *   cheap    "Flash"       50 credits/min, 68 languages
+ *   standard "ElevenLabs" 116 credits/min, 94 languages
+ *
+ * Billing is per 30-second block, so one block costs half the per-minute
+ * price: 35 / 25 / 58 credits. A fresh account gets 50 credits, which is why
+ * the emailnator runner runs the "cheap" (Flash) tier: 25 per block.
+ */
+export const PIPELINE_TIERS = [
+  { value: 'ultra', name: 'Ultra', creditsPerMin: 70 },
+  { value: 'cheap', name: 'Flash', creditsPerMin: 50 },
+  { value: 'standard', name: 'ElevenLabs', creditsPerMin: 116 },
+];
+
+const PIPELINE_ALIASES = {
+  flash: 'cheap',
+  elevenlabs: 'standard',
+  'eleven-labs': 'standard',
+  eleven: 'standard',
+};
+
+/** Credits a pipeline charges for one 30-second block. */
+export function pipelineBlockCredits(pipeline) {
+  const tier = PIPELINE_TIERS.find((row) => row.value === pipeline) || PIPELINE_TIERS[2];
+  return tier.creditsPerMin / 2;
+}
+
+/** "auto" mirrors the site; VOSKO_PIPELINE can force a tier (ultra/cheap/standard). */
 export function pipelineTypeFor(target) {
-  const override = (process.env.VOSKO_PIPELINE || 'auto').toLowerCase();
-  if (override === 'ultra' || override === 'standard') return override;
+  const raw = (process.env.VOSKO_PIPELINE || 'auto').toLowerCase();
+  const override = PIPELINE_ALIASES[raw] || raw;
+  if (PIPELINE_TIERS.some((tier) => tier.value === override)) return override;
   const targets = String(target || '')
     .split(',')
     .map((row) => row.trim())
@@ -125,7 +155,7 @@ export function credits(token) {
   return call(`${BILLING}/credits/account?product_id=1`, { token });
 }
 
-/** 200 free credits on a fresh account; harmless when already claimed. */
+/** Registration gift (50 credits since 2026-11); harmless when already claimed. */
 export async function claimGift(token) {
   try {
     return await call(`${BILLING}/credit/registration-gift?product_id=1`, { method: 'POST', token });
