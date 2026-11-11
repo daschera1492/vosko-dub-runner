@@ -7,7 +7,8 @@
  *   INPUT_URL         direct video/audio URL (required)
  *   SOURCE_LANG       display name or API value (default Auto)
  *   TARGET_LANG       display name or API value (required)
- *   CHUNK_SECONDS     soft chunk length, default 52 (hard cap 58)
+ *   CHUNK_SECONDS     soft chunk length, default 52 on bridge / 30 on emailnator
+ *                     (a 50-credit gift only pays for ~40s of dubbing)
  *   WHISPER_MODEL     tiny|base|small (default base)
  *   WORK_DIR          scratch dir (default ./work)
  *   VDB_BASE_URL      bridge REST base
@@ -51,16 +52,24 @@ const idp = await import(IDENTITY_PROVIDER === 'emailnator' ? './lib/emailnator.
 const INPUT_URL = env.INPUT_URL || '';
 const TARGET_INPUT = env.TARGET_LANG || '';
 const SOURCE_INPUT = env.SOURCE_LANG || 'Auto';
-const CHUNK_SECONDS = Math.min(56, Math.max(20, Number(env.CHUNK_SECONDS || 52))); // site cap is 60s
+// The site's registration gift is 50 credits and a chunk costs ~1.16 credits
+// per second (measured: 50.12s -> 58 credits), so anything above ~40s cannot
+// be paid for by a fresh account. The emailnator runner therefore caps chunks
+// lower; the bridge runner keeps the old 56s ceiling.
+const HARD_CAP_SECONDS = IDENTITY_PROVIDER === 'emailnator' ? 38 : 56;
+const CHUNK_SECONDS = Math.min(
+  HARD_CAP_SECONDS,
+  Math.max(20, Number(env.CHUNK_SECONDS || (IDENTITY_PROVIDER === 'emailnator' ? 30 : 52))),
+); // site cap is 60s
 const WHISPER_MODEL = env.WHISPER_MODEL || 'base';
 const WORK_DIR = path.resolve(env.WORK_DIR || 'work');
 const OUT_DIR = path.join(WORK_DIR, 'out');
 const STATE_FILE = path.join(WORK_DIR, 'state.json');
 const MAX_ACCOUNT_TRIES = Math.max(1, Math.min(6, Number(env.MAX_ACCOUNT_TRIES || 4)));
 const OTP_WAIT_SECONDS = Math.max(30, Math.min(120, Number(env.OTP_WAIT_SECONDS || 75)));
-// One account can dub several chunks: the gift is 200 credits and a 52s chunk
-// costs far less, so minting a login per chunk just burns the site's per-IP
-// "verification code" quota (~30, then HTTP 429 for minutes).
+// One account can dub several chunks: a 50-credit gift barely covers a 40s
+// chunk, so a login per chunk is normal on the emailnator runner. Reusing an
+// account is still worth it on the bridge runner (no temp-mail quota there).
 const ACCOUNT_MIN_CREDITS = Math.max(0, Number(env.ACCOUNT_MIN_CREDITS || 40));
 // Space logins out even when several workers start together.
 const LOGIN_GAP_SECONDS = Math.max(0, Number(env.LOGIN_GAP_SECONDS || 45));
@@ -451,7 +460,7 @@ async function main() {
 
   let { chunks } = await buildChunks(inputFile, path.join(WORK_DIR, 'chunks'), {
     maxSeconds: CHUNK_SECONDS,
-    hardCap: 56,
+    hardCap: HARD_CAP_SECONDS,
     whisperModel: WHISPER_MODEL,
     sourceLanguage: source,
     video: isVideo,

@@ -98,7 +98,7 @@ export function configured() {
 
 let runCounter = 0;
 
-export function createRun({ videoUrl, sourceLang, targetLang, chunkTotal, meta }) {
+export async function createRun({ videoUrl, sourceLang, targetLang, chunkTotal, meta }) {
   runCounter += 1;
   const id = Number(`${Date.now()}`.slice(-9)) * 10 + runCounter;
   console.log(`[run] local ${id}: ${sourceLang} -> ${targetLang}, ${chunkTotal} chunk(s), ${meta?.outputMode || 'audio'}`);
@@ -106,7 +106,9 @@ export function createRun({ videoUrl, sourceLang, targetLang, chunkTotal, meta }
   return { id, run_key: `local-${id.toString(36)}`, status: 'queued' };
 }
 
-export function updateRun(id, fields) {
+// Async on purpose: run.mjs calls `.catch()` on the result, exactly like the
+// bridge client returned promises from HTTP.
+export async function updateRun(id, fields) {
   const interesting = ['status', 'chunk_done', 'output_name', 'error'].filter((k) => fields?.[k] !== undefined);
   if (interesting.length) {
     console.log(`[run] ${id}: ${interesting.map((k) => `${k}=${String(fields[k]).slice(0, 160)}`).join(', ')}`);
@@ -114,8 +116,9 @@ export function updateRun(id, fields) {
   return { id, ...fields };
 }
 
-export function mintIdentity(runId, chunkIndex) {
-  return generateAddress().then(({ email, type, typeId }) => ({
+export async function mintIdentity(runId, chunkIndex) {
+  const { email, type, typeId } = await generateAddress();
+  return {
     id: email, // the address is the identity here
     email,
     run_id: runId,
@@ -123,10 +126,10 @@ export function mintIdentity(runId, chunkIndex) {
     status: 'minted',
     type,
     email_type_id: typeId,
-  }));
+  };
 }
 
-export function updateIdentity(id, fields) {
+export async function updateIdentity(id, fields) {
   if (fields?.status) console.log(`[identity] ${id}: ${fields.status}`);
   return { id, ...fields };
 }

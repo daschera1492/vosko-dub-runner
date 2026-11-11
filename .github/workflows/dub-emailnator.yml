@@ -9,6 +9,10 @@
 # The address always uses the dot alias only (the ".Gmail" toggle): emailnator
 # issues `name.with.dots@gmail.com` and the other three alias types stay off.
 #
+# Credit budget: a fresh account gets 50 credits and a chunk costs ~1.16
+# credits per second, so run.mjs caps chunks at 38s here (a 50s chunk needs 58
+# and fails with HTTP 402 "insufficient credits"). Keep chunk_seconds <= 40.
+#
 # Caveat: the free inbox is public — fine for a one-time login code, never for
 # anything private.
 
@@ -227,14 +231,14 @@ on:
           - 'Yoruba'
           - 'Zulu'
       chunk_seconds:
-        description: 'طول هر تکه — سقف خود سایت ۶۰ ثانیه است؛ ۵۲ پیشنهاد می‌شود'
+        description: 'طول هر تکه — هدیهٔ ثبت‌نام ۵۰ کردیت است و هر ثانیه دوبله ~۱.۱۶ کردیت؛ سقف ~۳۸ ثانیه'
         required: true
-        default: '52'
+        default: '30'
         type: choice
         options:
+          - '20'
           - '30'
           - '40'
-          - '52'
       pipeline_type:
         description: 'موتور دوبله — auto = انتخاب خود سایت (برای فارسی: standard)، standard، ultra'
         required: true
