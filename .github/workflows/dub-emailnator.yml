@@ -1,0 +1,481 @@
+# Vosko dub — Emailnator edition.
+#
+# Same pipeline, same Oxylabs proxies and the same inputs as dub.yml, but the
+# accounts no longer come from the vosko-dub-bridge WordPress mailbox. Every
+# chunk worker gets a fresh real @gmail.com address from emailnator.com and the
+# login code is read straight out of that inbox, so neither VDB_BASE_URL nor
+# VDB_KEY is used here and no mailbox of our own is needed.
+#
+# The address always uses the dot alias only (the ".Gmail" toggle): emailnator
+# issues `name.with.dots@gmail.com` and the other three alias types stay off.
+#
+# Caveat: the free inbox is public — fine for a one-time login code, never for
+# anything private.
+
+name: Vosko dub (Emailnator)
+
+# The two option lists below are generated from the live vosko.ai bundle by
+# scripts/languages.mjs (run the "Sync languages" workflow to refresh them).
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'لینک ویدیو — آدرس مستقیم فایل ویدیو یا صدا (mp4 / mp3 / m4a …)'
+        required: true
+        type: string
+      source_lang:
+        description: 'زبان مبدأ — فهرست زندهٔ سایت vosko.ai (Auto Detect = تشخیص خودکار)'
+        required: true
+        default: 'Auto Detect'
+        type: choice
+        options:
+          - 'Auto Detect'
+          - 'Chinese (Mandarin)'
+          - 'English'
+          - 'Japanese'
+          - 'Korean'
+          - 'Spanish'
+          - 'German'
+          - 'French'
+          - 'Portuguese'
+          - 'Thai'
+          - 'Indonesian'
+          - 'Vietnamese'
+          - 'Malay'
+          - 'Filipino'
+          - 'Italian'
+          - 'Russian'
+          - 'Dutch'
+          - 'Polish'
+          - 'Turkish'
+          - 'Swedish'
+          - 'Afrikaans'
+          - 'Amharic'
+          - 'Arabic'
+          - 'Armenian'
+          - 'Assamese'
+          - 'Asturian'
+          - 'Azerbaijani'
+          - 'Belarusian'
+          - 'Bengali'
+          - 'Bosnian'
+          - 'Bulgarian'
+          - 'Burmese'
+          - 'Cape Verdean Creole'
+          - 'Catalan'
+          - 'Cebuano'
+          - 'Chichewa (Nyanja)'
+          - 'Chinese (Cantonese)'
+          - 'Croatian'
+          - 'Czech'
+          - 'Danish'
+          - 'Estonian'
+          - 'Finnish'
+          - 'Fulah'
+          - 'Galician'
+          - 'Ganda'
+          - 'Georgian'
+          - 'Greek'
+          - 'Gujarati'
+          - 'Hausa'
+          - 'Hebrew'
+          - 'Hindi'
+          - 'Hungarian'
+          - 'Icelandic'
+          - 'Igbo'
+          - 'Irish'
+          - 'Javanese'
+          - 'Kannada'
+          - 'Kazakh'
+          - 'Khmer'
+          - 'Kurdish'
+          - 'Kyrgyz'
+          - 'Lao'
+          - 'Latvian'
+          - 'Lingala'
+          - 'Lithuanian'
+          - 'Luo'
+          - 'Luxembourgish'
+          - 'Macedonian'
+          - 'Malayalam'
+          - 'Maltese'
+          - 'Maori'
+          - 'Marathi'
+          - 'Mongolian'
+          - 'Nepali'
+          - 'Northern Sotho'
+          - 'Norwegian'
+          - 'Occitan'
+          - 'Odia (Oriya)'
+          - 'Pashto'
+          - 'Persian (Farsi)'
+          - 'Punjabi'
+          - 'Romanian'
+          - 'Serbian'
+          - 'Shona'
+          - 'Sindhi'
+          - 'Slovak'
+          - 'Slovenian'
+          - 'Somali'
+          - 'Swahili'
+          - 'Tajik'
+          - 'Tamil'
+          - 'Telugu'
+          - 'Ukrainian'
+          - 'Umbundu'
+          - 'Urdu'
+          - 'Uzbek'
+          - 'Welsh'
+          - 'Wolof'
+          - 'Xhosa'
+          - 'Zulu'
+      target_lang:
+        description: 'زبان مقصد — فهرست زندهٔ سایت vosko.ai'
+        required: true
+        default: 'Persian (Farsi)'
+        type: choice
+        options:
+          - 'Chinese (Mandarin)'
+          - 'English'
+          - 'Japanese'
+          - 'Korean'
+          - 'Spanish'
+          - 'German'
+          - 'French'
+          - 'Portuguese'
+          - 'Thai'
+          - 'Indonesian'
+          - 'Vietnamese'
+          - 'Malay'
+          - 'Filipino'
+          - 'Italian'
+          - 'Russian'
+          - 'Dutch'
+          - 'Polish'
+          - 'Turkish'
+          - 'Swedish'
+          - 'Afrikaans'
+          - 'Amharic'
+          - 'Arabic'
+          - 'Armenian'
+          - 'Assamese'
+          - 'Asturian'
+          - 'Azerbaijani'
+          - 'Belarusian'
+          - 'Bengali'
+          - 'Bosnian'
+          - 'Bulgarian'
+          - 'Burmese'
+          - 'Catalan'
+          - 'Cebuano'
+          - 'Chichewa (Nyanja)'
+          - 'Chinese (Cantonese)'
+          - 'Croatian'
+          - 'Czech'
+          - 'Danish'
+          - 'Estonian'
+          - 'Finnish'
+          - 'Galician'
+          - 'Georgian'
+          - 'Greek'
+          - 'Gujarati'
+          - 'Hausa'
+          - 'Hebrew'
+          - 'Hindi'
+          - 'Hungarian'
+          - 'Icelandic'
+          - 'Irish'
+          - 'Javanese'
+          - 'Kamba'
+          - 'Kannada'
+          - 'Kazakh'
+          - 'Kyrgyz'
+          - 'Lao'
+          - 'Latvian'
+          - 'Lingala'
+          - 'Lithuanian'
+          - 'Luxembourgish'
+          - 'Macedonian'
+          - 'Malayalam'
+          - 'Maltese'
+          - 'Marathi'
+          - 'Mongolian'
+          - 'Nepali'
+          - 'Norwegian'
+          - 'Occitan'
+          - 'Odia (Oriya)'
+          - 'Pashto'
+          - 'Persian (Farsi)'
+          - 'Punjabi'
+          - 'Romanian'
+          - 'Serbian'
+          - 'Shona'
+          - 'Sindhi'
+          - 'Slovak'
+          - 'Slovenian'
+          - 'Somali'
+          - 'Sorani Kurdish'
+          - 'Swahili'
+          - 'Tajik'
+          - 'Tamil'
+          - 'Telugu'
+          - 'Ukrainian'
+          - 'Urdu'
+          - 'Uzbek'
+          - 'Welsh'
+          - 'Wolof'
+          - 'Yoruba'
+          - 'Zulu'
+      chunk_seconds:
+        description: 'طول هر تکه — سقف خود سایت ۶۰ ثانیه است؛ ۵۲ پیشنهاد می‌شود'
+        required: true
+        default: '52'
+        type: choice
+        options:
+          - '30'
+          - '40'
+          - '52'
+      pipeline_type:
+        description: 'موتور دوبله — auto = انتخاب خود سایت (برای فارسی: standard)، standard، ultra'
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - standard
+          - ultra
+      no_chunk:
+        description: 'بدون برش — کل فایل را یک پروژه آپلود کن (برای ویدیوی بلند کند است)'
+        required: true
+        default: false
+        type: boolean
+      max_chunks:
+        description: 'فقط تست — فقط N تکهٔ اول دوبله شود (0 = همه)'
+        required: false
+        default: '0'
+        type: string
+      debug_dump:
+        description: 'فقط عیب‌یابی — JSON خام آیتم سایت را کنار خروجی ذخیره کن'
+        required: false
+        default: false
+        type: boolean
+      max_account_tries:
+        description: 'تعداد تلاش با اکانت تازه برای هر تکه (بیشتر = مقاوم‌تر در برابر تأخیر کد ورود)'
+        required: false
+        default: '4'
+        type: string
+      otp_wait_seconds:
+        description: 'چند ثانیه برای کد ورود صبر شود (۳۰ تا ۱۲۰)'
+        required: false
+        default: '75'
+        type: string
+      allow_partial:
+        description: 'تکه‌های ناموفق را با سکوت پر کن و اجرا را شکست نده (پیش‌فرض: شکست)'
+        required: false
+        default: false
+        type: boolean
+      whisper_model:
+        description: 'مدل Whisper — برای پیدا کردن نقطهٔ سکوت و برش تکه‌ها'
+        required: true
+        default: base
+        type: choice
+        options:
+          - tiny
+          - base
+          - small
+      output_mode:
+        description: 'خروجی — audio = یک MP3 نهایی؛ video = همان صدا روی ویدیوی اصلی'
+        required: true
+        default: audio
+        type: choice
+        options:
+          - audio
+          - video
+      audio_source:
+        description: 'موسیقی/صدای محیطی — auto = خودکار، export = فایل نهایی سایت، mix = میکس سگمنت‌ها روی پس‌زمینه، voice = فقط صدا'
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - export
+          - mix
+          - voice
+      parallel_chunks:
+        description: 'هم‌زمانی — چند تکه با هم دوبله شود (1 = مطمئن‌ترین، 5 = سریع‌ترین)'
+        required: true
+        default: '5'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+      queue_group:
+        description: 'اختیاری — اجراهایی که این مقدارشان یکی است پشت سر هم می‌روند؛ خالی = موازی'
+        required: false
+        default: ''
+        type: string
+      proxy_enabled:
+        description: 'پروکسی — هر اکانت با یک IP مسکونی جدا (Oxylabs)؛ خاموش = IP خودِ رانر'
+        required: true
+        default: true
+        type: boolean
+      proxy_country:
+        description: 'کشور خروج پروکسی — auto یعنی بین چند کشور بچرخد (هر اکانت یک کشور)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - us
+          - de
+          - nl
+          - gb
+          - fr
+          - ca
+          - tr
+          - ae
+          - se
+          - pl
+          - es
+          - it
+          - jp
+      resume_run_id:
+        description: 'ادامهٔ اجرای قبلی — شمارهٔ Run قبلی که خروجی‌اش ادامه داده شود (خالی = از صفر)'
+        required: false
+        default: ''
+        type: string
+      publish_release:
+        description: 'انتشار خروجی — نتیجه به‌صورت Release در گیت‌هاب منتشر شود'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  # Each dispatch gets a unique group, so runs execute in parallel by default.
+  # Set the optional `queue_group` input to the same value on several runs to
+  # make them wait for each other instead.
+  group: vosko-dub-${{ inputs.queue_group != '' && inputs.queue_group || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  dub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install ffmpeg
+        timeout-minutes: 8
+        run: |
+          set -e
+          if command -v ffmpeg >/dev/null 2>&1; then
+            echo "ffmpeg already installed"
+          else
+            # wait for any background apt/dpkg lock to be released
+            sudo systemctl stop unattended-upgrades 2>/dev/null || true
+            for i in 1 2 3; do
+              echo "apt attempt $i"
+              if sudo timeout 180 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o DPkg::Lock::Timeout=60 update \
+                && sudo timeout 300 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o DPkg::Lock::Timeout=60 install -y --no-install-recommends ffmpeg; then
+                break
+              fi
+              if [ "$i" = "3" ]; then
+                echo "apt failed 3 times"
+                exit 1
+              fi
+              sleep 10
+            done
+          fi
+          ffmpeg -version | head -n 1
+
+      - name: Cache Whisper model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/whisper
+          key: whisper-${{ inputs.whisper_model }}
+
+      - name: Install Whisper
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --quiet openai-whisper
+
+      - name: Fetch live languages and verify selection
+        env:
+          SOURCE_LANG: ${{ inputs.source_lang }}
+          TARGET_LANG: ${{ inputs.target_lang }}
+        run: node scripts/languages.mjs --verify "$SOURCE_LANG" "$TARGET_LANG" --summary
+
+      - name: Restore previous work
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: dub-output
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/work
+
+      - name: Dub
+        id: dub
+        env:
+          INPUT_URL: ${{ inputs.video_url }}
+          SOURCE_LANG: ${{ inputs.source_lang }}
+          TARGET_LANG: ${{ inputs.target_lang }}
+          CHUNK_SECONDS: ${{ inputs.chunk_seconds }}
+          VOSKO_PIPELINE: ${{ inputs.pipeline_type }}
+          NO_CHUNK: ${{ inputs.no_chunk }}
+          MAX_CHUNKS: ${{ inputs.max_chunks }}
+          DEBUG_DUMP: ${{ inputs.debug_dump }}
+          MAX_ACCOUNT_TRIES: ${{ inputs.max_account_tries }}
+          OTP_WAIT_SECONDS: ${{ inputs.otp_wait_seconds }}
+          ALLOW_PARTIAL: ${{ inputs.allow_partial }}
+          WHISPER_MODEL: ${{ inputs.whisper_model }}
+          OUTPUT_MODE: ${{ inputs.output_mode }}
+          AUDIO_SOURCE: ${{ inputs.audio_source }}
+          PARALLEL_CHUNKS: ${{ inputs.parallel_chunks }}
+          PROXY_OXYLABS: ${{ secrets.PROXY_OXYLABS }}
+          PROXY_ENABLED: ${{ inputs.proxy_enabled }}
+          PROXY_COUNTRIES: ${{ inputs.proxy_country == 'auto' && 'us,de,nl,gb' || inputs.proxy_country }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          # emailnator issues the Gmail address and serves the OTP; the bridge
+          # (and the VDB_* secrets) are not used by this workflow at all.
+          IDENTITY_PROVIDER: emailnator
+          # 3 = ".Gmail" (dot alias) only; 1=domain, 2=+Gmail, 8=googlemail
+          EMAILNATOR_IDS: '3'
+          EMAILNATOR_POLL_SECONDS: '4'
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WORK_DIR: ${{ runner.temp }}/work
+        run: node scripts/run.mjs
+
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dub-output
+          path: |
+            ${{ runner.temp }}/work/state.json
+            ${{ runner.temp }}/work/out
+          if-no-files-found: warn
+
+      - name: Link
+        if: always()
+        run: |
+          {
+            echo '### Result'
+            echo ''
+            echo "- file: \`${{ steps.dub.outputs.name }}\`"
+            echo "- release: ${{ steps.dub.outputs.release_url }}"
+            echo "- bridge run: ${{ steps.dub.outputs.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"

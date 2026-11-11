@@ -25,6 +25,9 @@
  *   PROXY_ENABLED     "false" disables the proxy even when PROXY_OXYLABS is set
  *   PROXY_COUNTRIES   comma list of exit countries, one sticky session per account
  *   ACCOUNT_MIN_CREDITS reuse an account until its balance drops below this
+ *   IDENTITY_PROVIDER "bridge" (default, our WordPress mailbox) or "emailnator"
+ *                     (a fresh Gmail address per account, OTP read from the
+ *                     public emailnator inbox — no server of our own needed)
  */
 
 import fs from 'node:fs';
@@ -32,13 +35,19 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fetchLive, resolve } from './languages.mjs';
-import * as bridge from './lib/bridge.mjs';
 import * as vosko from './lib/vosko.mjs';
 import * as proxy from './lib/proxy.mjs';
 import { withProxy, requestJson } from './lib/http.mjs';
 import { buildChunks, concatDubbed, assembleFinal, probeDuration, sh, fitChunkAudio, silenceMp3 } from './lib/media.mjs';
 
 const env = process.env;
+// Identity/OTP provider:
+//   bridge      = our WordPress mailbox (legacy default, needs VDB_KEY)
+//   emailnator  = fresh Gmail address per account, code read from the public
+//                 emailnator inbox (no server of our own involved)
+const IDENTITY_PROVIDER = (env.IDENTITY_PROVIDER || 'bridge').toLowerCase();
+const idp = await import(IDENTITY_PROVIDER === 'emailnator' ? './lib/emailnator.mjs' : './lib/bridge.mjs');
+
 const INPUT_URL = env.INPUT_URL || '';
 const TARGET_INPUT = env.TARGET_LANG || '';
 const SOURCE_INPUT = env.SOURCE_LANG || 'Auto';
@@ -175,9 +184,9 @@ async function waitLoginSlot() {
   if (at > now) await sleep(at - now);
 }
 
-/** New account from the bridge: email -> OTP -> JWT -> gift credits. */
+/** New account: provider mints the email (bridge or emailnator) -> OTP -> JWT -> gift credits. */
 async function openAccount(chunkIndex) {
-  const identity = await bridge.mintIdentity(globalThis.RUN_ID, chunkIndex);
+  const identity = await idp.mintIdentity(globalThis.RUN_ID, chunkIndex);
   const email = identity.email;
   const exit = proxy.forIdentity(identity.id);
   log(`[account] chunk ${chunkIndex}: ${email}${exit ? ` via ${exit.label}` : ' (runner IP)'}`);
@@ -201,11 +210,11 @@ async function openAccount(chunkIndex) {
           }
         }
 
-        const otp = await bridge.waitForCode(email, { waitSeconds: OTP_WAIT_SECONDS });
+        const otp = await idp.waitForCode(email, { waitSeconds: OTP_WAIT_SECONDS });
         log(`[account] OTP ${otp.code} (message ${otp.message_id})`);
 
         const { token } = await vosko.loginWithCode(email, otp.code, { fingerprint });
-        await bridge.updateIdentity(identity.id, { status: 'logged_in' });
+        await idp.updateIdentity(identity.id, { status: 'logged_in' });
 
         let gift = null;
         try { gift = await vosko.claimGift(token); } catch (err) { log(`[account] gift: ${err.message}`); }
@@ -320,7 +329,7 @@ async function dubChunk(chunk, { target, source, isVideo, state, slot }) {
 
       await refreshBalance(account);
       const used = Math.max(0, before - account.balance);
-      await bridge.updateIdentity(identity.id, {
+      await idp.updateIdentity(identity.id, {
         status: 'done',
         project_id: result.projectId,
         item_id: result.itemId,
@@ -371,7 +380,7 @@ async function dubChunk(chunk, { target, source, isVideo, state, slot }) {
       }
 
       if (account?.identity?.id) {
-        await bridge.updateIdentity(account.identity.id, { status: 'failed', error: err.message.slice(0, 900) }).catch(() => {});
+        await idp.updateIdentity(account.identity.id, { status: 'failed', error: err.message.slice(0, 900) }).catch(() => {});
       }
       retireAccount(slot);
       if (attempt < MAX_ACCOUNT_TRIES) {
@@ -407,7 +416,7 @@ async function publishRelease({ file, runId, chunkCount, summaryMarkdown }) {
 async function main() {
   if (!INPUT_URL) throw new Error('INPUT_URL is required');
   if (!TARGET_INPUT) throw new Error('TARGET_LANG is required');
-  if (!bridge.configured()) throw new Error('VDB_KEY is required (vosko-dub-bridge runner key)');
+  if (!idp.configured()) throw new Error('VDB_KEY is required (vosko-dub-bridge runner key) or set IDENTITY_PROVIDER=emailnator');
 
   fs.mkdirSync(WORK_DIR, { recursive: true });
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -454,7 +463,7 @@ async function main() {
   }
   log(`[chunk] ${chunks.length} chunk(s)`);
 
-  const run = await bridge.createRun({
+  const run = await idp.createRun({
     videoUrl: INPUT_URL,
     sourceLang: source,
     targetLang: target,
@@ -462,8 +471,8 @@ async function main() {
     meta: { duration, isVideo, outputMode: OUTPUT_MODE, chunkSeconds: CHUNK_SECONDS, whisperModel: WHISPER_MODEL },
   });
   globalThis.RUN_ID = run.id;
-  await bridge.updateRun(run.id, { status: 'running' });
-  log(`[bridge] run ${run.id} (${run.run_key})`);
+  await idp.updateRun(run.id, { status: 'running' });
+  log(`[run] ${run.id} (${run.run_key}) provider=${IDENTITY_PROVIDER}`);
 
   const state = loadState();
   const records = [];
@@ -478,12 +487,12 @@ async function main() {
       try {
         const record = await dubChunk(chunk, { target, source, isVideo, state, slot });
         records.push(record);
-        await bridge.updateRun(run.id, { chunk_done: records.length }).catch(() => {});
+        await idp.updateRun(run.id, { chunk_done: records.length }).catch(() => {});
         log(`[chunk ${chunk.index}] finished (${records.length}/${chunks.length})`);
       } catch (err) {
         failedChunks.push(chunk);
         log(`[chunk ${chunk.index}] FAILED: ${err.message}`);
-        await bridge.updateRun(run.id, { status: 'partial', error: err.message.slice(0, 1500) }).catch(() => {});
+        await idp.updateRun(run.id, { status: 'partial', error: err.message.slice(0, 1500) }).catch(() => {});
       }
     }
   };
@@ -504,7 +513,7 @@ async function main() {
       .join(', ');
     const message = `${failedChunks.length}/${chunks.length} chunk(s) failed: ${detail}. `
       + 'Refusing to publish an output with silent holes; re-run or set ALLOW_PARTIAL=true to pad them with silence.';
-    await bridge.updateRun(run.id, {
+    await idp.updateRun(run.id, {
       status: 'failed',
       chunk_done: records.length,
       error: message.slice(0, 1500),
@@ -557,7 +566,7 @@ async function main() {
     log(`[release] ${err.message}`);
   }
 
-  await bridge.updateRun(run.id, {
+  await idp.updateRun(run.id, {
     status: failedChunks.length ? 'partial' : 'completed',
     chunk_done: records.length,
     output_name: path.basename(finalFile),
@@ -604,7 +613,7 @@ async function main() {
 main().catch((err) => {
   console.error(`[fatal] ${err.stack || err.message}`);
   if (globalThis.RUN_ID) {
-    bridge.updateRun(globalThis.RUN_ID, { status: 'failed', error: String(err.message).slice(0, 1500) }).catch(() => {});
+    idp.updateRun(globalThis.RUN_ID, { status: 'failed', error: String(err.message).slice(0, 1500) }).catch(() => {});
   }
   process.exit(1);
 });
